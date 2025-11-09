@@ -1,0 +1,63 @@
+# Source files
+src/
+test/
+coverage/
+
+# Config files
+.env
+.env.*
+dbdock.config.json
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Build artifacts
+*.tsbuildinfo
+tsconfig.build.json
+
+# Development
+node_modules/
+pnpm-lock.yaml
+yarn.lock
+package-lock.json
+
+# Documentation (keep in package)
+!README.md
+!LICENSE
+!CONFIGURATION.md
+!USAGE.md
+!WAL_SETUP.md
+
+# Backups
+backups/
+*.backup
+*.dump
+
+# Testing
+jest.config.js
+.eslintrc.js
+eslint.config.mjs
+.prettierrc
+
+# Development docs
+prd.md
+CONTRIBUTING.md
