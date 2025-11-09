@@ -1,6 +1,6 @@
 {
   "name": "dbdock",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Enterprise-grade PostgreSQL backup & restore with encryption, compression, and point-in-time recovery",
   "author": "Naheem Olaide <naheemolaide@gmail.com>",
   "private": false,
