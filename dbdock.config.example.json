@@ -1,0 +1,35 @@
+{
+  "postgres": {
+    "host": "localhost",
+    "port": 5432,
+    "user": "postgres",
+    "password": "your-password",
+    "database": "your-database"
+  },
+  "storage": {
+    "provider": "local",
+    "bucket": "dbdock-backups",
+    "localPath": "./backups"
+  },
+  "encryption": {
+    "enabled": true,
+    "secret": "YOUR-LONG-SECRET-KEY-CHANGE-THIS",
+    "iterations": 100000
+  },
+  "schedule": {
+    "type": "cron",
+    "expression": "0 2 * * *"
+  },
+  "pitr": {
+    "enabled": false,
+    "walIntervalSeconds": 300,
+    "retentionDays": 30
+  },
+  "alerts": {
+    "smtpHost": "smtp.gmail.com",
+    "smtpPort": 587,
+    "smtpUser": "noreply@example.com",
+    "smtpPass": "your-smtp-password",
+    "to": ["admin@example.com"]
+  }
+}
