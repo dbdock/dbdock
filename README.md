@@ -1,5 +1,5 @@
 <div align="center">
-  <h1>🐳 DBDock</h1>
+  <h1>DBDock</h1>
   <p><strong>Enterprise-grade PostgreSQL backup & restore for developers</strong></p>
 
   <p>
@@ -15,12 +15,13 @@
     <img src="https://img.shields.io/badge/Node.js-18%2B-green?logo=node.js" alt="Node.js 18+">
     <img src="https://img.shields.io/badge/TypeScript-5.0%2B-blue?logo=typescript" alt="TypeScript 5.0+">
     <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License">
+    <img src="https://img.shields.io/npm/v/dbdock.svg" alt="npm version">
   </p>
 </div>
 
 ---
 
-## 🎯 Why DBDock?
+## Why DBDock?
 
 Stop worrying about database backups. DBDock handles encrypted, compressed PostgreSQL backups with point-in-time recovery, so you can focus on building.
 
@@ -35,36 +36,36 @@ console.log(`Backup complete: ${result.metadata.id}`);
 
 ---
 
-## ✨ Features
+## Features
 
-### 🔐 **Secure by Default**
+### Secure by Default
 - **AES-256-GCM Encryption** - Military-grade encryption for your backups
 - **Streaming Encryption** - Never stores unencrypted data on disk
 - **PBKDF2 Key Derivation** - 100,000 iterations for key strengthening
 
-### 📦 **Smart Compression**
+### Smart Compression
 - **Brotli Compression** - 70-90% size reduction
 - **Streaming Pipeline** - Memory-efficient processing
 - **Configurable Levels** - Balance speed vs. size
 
-### ☁️ **Flexible Storage**
+### Flexible Storage
 - **AWS S3** - Industry-standard cloud storage
 - **Cloudflare R2** - S3-compatible with zero egress fees
 - **Local Storage** - Perfect for development and testing
 - **Custom Adapters** - Extend to any storage provider
 
-### ⏰ **Point-in-Time Recovery (PITR)**
+### Point-in-Time Recovery (PITR)
 - **WAL Archiving** - Continuous backup of database changes
 - **Restore to Any Point** - Go back to any second within retention period
 - **Timeline Management** - Handle multiple recovery scenarios
 
-### 🧹 **Automatic Retention**
+### Automatic Retention
 - **Policy-Based Cleanup** - Age and count-based retention rules
 - **Daily Automation** - Scheduled cleanup at 3 AM
 - **Space Reclamation** - Track and report storage savings
 - **Min/Max Safeguards** - Never delete too many or too few backups
 
-### 📊 **Developer-Friendly**
+### Developer-Friendly
 - **TypeScript-First** - Full type safety and IntelliSense
 - **NestJS Architecture** - Modular, testable, and maintainable
 - **Programmatic API** - Use in your Node.js applications
@@ -72,7 +73,7 @@ console.log(`Backup complete: ${result.metadata.id}`);
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - Node.js 18+
@@ -181,7 +182,7 @@ async function backup() {
     encrypt: true,
   });
 
-  console.log('✅ Backup completed!');
+  console.log('Backup completed!');
   console.log(`ID: ${result.metadata.id}`);
   console.log(`Size: ${(result.metadata.size / 1024 / 1024).toFixed(2)} MB`);
   console.log(`Compressed: ${(result.metadata.compressedSize / 1024 / 1024).toFixed(2)} MB`);
@@ -195,7 +196,7 @@ backup();
 
 **Output:**
 ```
-✅ Backup completed!
+Backup completed!
 ID: 550e8400-e29b-41d4-a716-446655440000
 Size: 128.50 MB
 Compressed: 32.15 MB
@@ -204,7 +205,7 @@ Duration: 45.32s
 
 ---
 
-## 📖 Usage
+## Usage
 
 ### Basic Backup
 
@@ -278,7 +279,7 @@ console.log(`${walFiles.length} WAL files archived`);
 
 ---
 
-## 🗂️ Storage Providers
+## Storage Providers
 
 ### Local Storage (Development)
 
@@ -328,18 +329,18 @@ console.log(`${walFiles.length} WAL files archived`);
 
 ---
 
-## 🔒 Security Best Practices
+## Security Best Practices
 
 ### 1. Secure Your Encryption Key
 
 ```bash
-# ❌ Don't hardcode secrets
+# Don't hardcode secrets
 ENCRYPTION_SECRET=my-secret-key
 
-# ✅ Use environment variables
+# Use environment variables
 ENCRYPTION_SECRET=$(cat /run/secrets/dbdock-encryption-key)
 
-# ✅ Use secret managers
+# Use secret managers
 ENCRYPTION_SECRET=$(aws secretsmanager get-secret-value --secret-id dbdock-key)
 ```
 
@@ -368,7 +369,7 @@ Enable versioning on your S3/R2 bucket for extra protection against accidental d
 
 ---
 
-## 📚 Documentation
+## Documentation
 
 - **[CONFIGURATION.md](CONFIGURATION.md)** - Complete configuration guide (JSON vs ENV)
 - **[USAGE.md](USAGE.md)** - Usage guide with code examples
@@ -377,7 +378,7 @@ Enable versioning on your S3/R2 bucket for extra protection against accidental d
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 DBDock is built on NestJS with a modular architecture:
 
@@ -432,13 +433,13 @@ DBDock is built on NestJS with a modular architecture:
 
 ---
 
-## 🛠️ Development
+## Development
 
 ### Setup
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/dbdock.git
+git clone https://github.com/naheemolaide/dbdock.git
 cd dbdock
 
 # Install dependencies
@@ -478,34 +479,7 @@ pnpm test:cov
 
 ---
 
-## 🗺️ Roadmap
-
-### ✅ Completed
-
-- **Week 1:** Project foundation, config, storage adapters
-- **Week 2:** Backup engine, compression, encryption, S3/R2
-- **Week 3:** WAL archiving, retention policies, automation
-
-### 🚧 In Progress (Week 4)
-
-- [ ] Restore engine with PITR support
-- [ ] CLI commands (`dbdock backup`, `dbdock restore`)
-- [ ] Email notifications for backup status
-- [ ] Integration tests
-
-### 🔮 Future
-
-- [ ] Web dashboard for backup management
-- [ ] Backup validation and integrity checks
-- [ ] Multi-database support (MySQL, MongoDB)
-- [ ] Incremental backups
-- [ ] Backup replication across regions
-- [ ] Backup encryption key rotation
-- [ ] Webhook notifications
-
----
-
-## 📊 Performance
+## Performance
 
 DBDock is optimized for performance and efficiency:
 
@@ -524,27 +498,27 @@ DBDock is optimized for performance and efficiency:
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+Contributions are welcome! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
 ### Ways to Contribute
 
-- 🐛 Report bugs
-- 💡 Suggest features
-- 📖 Improve documentation
-- 🔧 Submit pull requests
-- ⭐ Star the project
+- Report bugs
+- Suggest features
+- Improve documentation
+- Submit pull requests
+- Star the project
 
 ---
 
-## 📝 License
+## License
 
 MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 Built with:
 - [NestJS](https://nestjs.com/) - Progressive Node.js framework
@@ -553,20 +527,18 @@ Built with:
 
 ---
 
-## 💬 Support
+## Support
 
-- 📧 Email: support@dbdock.dev
-- 💬 Discord: [Join our community](https://discord.gg/dbdock)
-- 🐛 Issues: [GitHub Issues](https://github.com/yourusername/dbdock/issues)
-- 📖 Docs: [Documentation](https://docs.dbdock.dev)
+- Email: naheemolaide@gmail.com
+- Issues: [GitHub Issues](https://github.com/naheemolaide/dbdock/issues)
+- npm: [npmjs.com/package/dbdock](https://www.npmjs.com/package/dbdock)
 
 ---
 
 <div align="center">
-  <p>Made with ❤️ by developers, for developers</p>
+  <p>Made with care by developers, for developers</p>
   <p>
-    <a href="https://github.com/yourusername/dbdock">⭐ Star on GitHub</a> •
-    <a href="https://twitter.com/dbdock">🐦 Follow on Twitter</a> •
-    <a href="https://dbdock.dev">🌐 Visit Website</a>
+    <a href="https://github.com/naheemolaide/dbdock">Star on GitHub</a> •
+    <a href="https://www.npmjs.com/package/dbdock">View on npm</a>
   </p>
 </div>
