@@ -92,7 +92,11 @@ yarn add dbdock
 
 ### Configuration
 
-Create `dbdock.config.json`:
+DBDock uses **JSON config by default** with environment variable fallback.
+
+#### Option 1: JSON Config (Recommended)
+
+Create `dbdock.config.json` in your project root:
 
 ```json
 {
@@ -119,6 +123,47 @@ Create `dbdock.config.json`:
   }
 }
 ```
+
+**Tip:** Copy from the example:
+```bash
+cp node_modules/dbdock/dbdock.config.example.json dbdock.config.json
+```
+
+#### Option 2: Environment Variables (Fallback)
+
+If `dbdock.config.json` doesn't exist, DBDock reads from environment variables:
+
+```bash
+# Database
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=your-password
+DB_NAME=myapp
+
+# Storage
+STORAGE_PROVIDER=local
+STORAGE_BUCKET=dbdock-backups
+STORAGE_LOCAL_PATH=./backups
+
+# Encryption
+ENCRYPTION_ENABLED=true
+ENCRYPTION_SECRET=your-32-character-secret-key-here
+ENCRYPTION_ITERATIONS=100000
+
+# PITR
+PITR_ENABLED=false
+PITR_RETENTION_DAYS=30
+```
+
+#### Option 3: Custom Config Path
+
+```bash
+# Use a custom config file location
+DBDOCK_CONFIG_PATH=/etc/dbdock/production.config.json
+```
+
+**Best Practice:** Use JSON config for development, environment variables for production/Docker.
 
 ### Create Your First Backup
 
@@ -325,7 +370,8 @@ Enable versioning on your S3/R2 bucket for extra protection against accidental d
 
 ## 📚 Documentation
 
-- **[USAGE.md](USAGE.md)** - Complete usage guide with examples
+- **[CONFIGURATION.md](CONFIGURATION.md)** - Complete configuration guide (JSON vs ENV)
+- **[USAGE.md](USAGE.md)** - Usage guide with code examples
 - **[WAL_SETUP.md](WAL_SETUP.md)** - Point-in-Time Recovery setup
 - **[prd.md](prd.md)** - Product requirements and roadmap
 
