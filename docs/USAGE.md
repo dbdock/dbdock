@@ -36,7 +36,9 @@ import { AppModule } from './app.module';
 import { BackupService } from './backup/backup.service';
 
 async function backup() {
-  const app = await NestFactory.createApplicationContext(AppModule);
+  const app = await NestFactory.createApplicationContext(AppModule, {
+    logger: ['error', 'warn'],
+  });
   const backupService = app.get(BackupService);
 
   const result = await backupService.createBackup({
@@ -60,7 +62,9 @@ backup();
 
 ```typescript
 async function listBackups() {
-  const app = await NestFactory.createApplicationContext(AppModule);
+  const app = await NestFactory.createApplicationContext(AppModule, {
+    logger: ['error', 'warn'],
+  });
   const backupService = app.get(BackupService);
 
   const backups = await backupService.listBackups();

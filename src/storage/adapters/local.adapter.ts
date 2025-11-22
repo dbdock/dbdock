@@ -12,7 +12,6 @@ import { Readable } from 'stream';
 import * as fs from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
-import { pipeline } from 'stream/promises';
 
 const mkdir = promisify(fs.mkdir);
 const unlink = promisify(fs.unlink);
@@ -57,24 +56,67 @@ export class LocalStorageAdapter implements IStorageAdapter {
 
     const writeStream = fs.createWriteStream(fullPath);
 
-    try {
-      await pipeline(stream, writeStream);
+    return new Promise((resolve, reject) => {
+      let finished = false;
+      let hasError = false;
 
-      if (options.metadata) {
-        await fs.promises.writeFile(
-          this.getMetadataPath(options.key),
-          JSON.stringify(options.metadata),
-          'utf-8',
-        );
-      }
+      const cleanup = () => {
+        if (!finished) {
+          finished = true;
+          stream.removeAllListeners();
+          writeStream.removeAllListeners();
+        }
+      };
 
-      this.logger.log(`Uploaded ${options.key} to local storage`);
+      const handleError = (error: Error) => {
+        if (hasError) return;
+        hasError = true;
+        cleanup();
+        this.logger.error(`Failed to upload ${options.key}: ${error.message}`);
+        if (!writeStream.destroyed) {
+          writeStream.destroy();
+        }
+        reject(error);
+      };
 
-      return { key: options.key };
-    } catch (error) {
-      this.logger.error(`Failed to upload ${options.key}: ${error.message}`);
-      throw error;
-    }
+      const handleFinish = async () => {
+        if (hasError || finished) return;
+        finished = true;
+        cleanup();
+
+        try {
+          if (options.metadata) {
+            await fs.promises.writeFile(
+              this.getMetadataPath(options.key),
+              JSON.stringify(options.metadata),
+              'utf-8',
+            );
+          }
+
+          this.logger.log(`Uploaded ${options.key} to local storage`);
+          resolve({ key: options.key });
+        } catch (error) {
+          reject(error);
+        }
+      };
+
+      stream.on('error', handleError);
+      writeStream.on('error', handleError);
+      writeStream.on('finish', handleFinish);
+      writeStream.on('close', () => {
+        if (!finished && !hasError) {
+          this.logger.warn('WriteStream closed without finish event');
+          handleFinish();
+        }
+      });
+
+      const pipe = stream.pipe(writeStream);
+
+      pipe.on('error', (error) => {
+        this.logger.error(`Pipe error: ${error.message}`);
+        handleError(error);
+      });
+    });
   }
 
   async downloadStream(options: DownloadOptions): Promise<Readable> {

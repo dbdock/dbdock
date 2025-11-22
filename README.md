@@ -1,19 +1,18 @@
 <div align="center">
   <h1>DBDock</h1>
-  <p><strong>Enterprise-grade PostgreSQL backup & restore for developers</strong></p>
+  <p><strong>Database backup and restore in under 60 seconds</strong></p>
 
   <p>
     <a href="#quick-start">Quick Start</a> •
     <a href="#features">Features</a> •
-    <a href="#installation">Installation</a> •
-    <a href="#usage">Usage</a> •
+    <a href="#cli-reference">CLI Reference</a> •
+    <a href="#programmatic-usage">Programmatic Usage</a> •
     <a href="#documentation">Documentation</a>
   </p>
 
   <p>
     <img src="https://img.shields.io/badge/PostgreSQL-12%2B-blue?logo=postgresql" alt="PostgreSQL 12+">
     <img src="https://img.shields.io/badge/Node.js-18%2B-green?logo=node.js" alt="Node.js 18+">
-    <img src="https://img.shields.io/badge/TypeScript-5.0%2B-blue?logo=typescript" alt="TypeScript 5.0+">
     <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License">
     <img src="https://img.shields.io/npm/v/dbdock.svg" alt="npm version">
   </p>
@@ -21,524 +20,502 @@
 
 ---
 
-## Why DBDock?
+## Quick Start
 
-Stop worrying about database backups. DBDock handles encrypted, compressed PostgreSQL backups with point-in-time recovery, so you can focus on building.
+Get your first database backup running in 3 commands:
 
-```typescript
-// Create a backup in 3 lines of code
-const backupService = app.get(BackupService);
-const result = await backupService.createBackup();
-console.log(`Backup complete: ${result.metadata.id}`);
+```bash
+npx dbdock init
+npx dbdock test
+npx dbdock backup
 ```
 
-**That's it.** DBDock handles compression, encryption, and upload to your preferred storage.
+That's it. DBDock handles compression, encryption, and storage automatically.
+
+---
+
+## Why DBDock?
+
+Stop spending hours configuring backup solutions. DBDock provides enterprise-grade PostgreSQL backups with a developer-friendly CLI and clean programmatic API. Get automated backups with point-in-time recovery, encryption, compression, and multi-cloud storage in under 60 seconds.
+
+### Built for Developers
+
+- **CLI-First Design** - Setup in under 60 seconds with interactive prompts
+- **Zero Configuration Hassle** - Smart defaults, override when needed
+- **Encrypted & Compressed** - AES-256 encryption and Brotli compression out of the box
+- **Multiple Storage Options** - Local, S3, Cloudinary, or bring your own adapter
+- **TypeScript Native** - Full type safety for programmatic usage
 
 ---
 
 ## Features
 
-### Secure by Default
-- **AES-256-GCM Encryption** - Military-grade encryption for your backups
+### Database Support
+- **PostgreSQL 12+** - Full backup with point-in-time recovery (PITR), WAL archiving, and streaming replication
+
+### Security
+- **AES-256-GCM Encryption** - Military-grade encryption for backups
 - **Streaming Encryption** - Never stores unencrypted data on disk
 - **PBKDF2 Key Derivation** - 100,000 iterations for key strengthening
 
-### Smart Compression
-- **Brotli Compression** - 70-90% size reduction
-- **Streaming Pipeline** - Memory-efficient processing
-- **Configurable Levels** - Balance speed vs. size
-
-### Flexible Storage
+### Storage Providers
+- **Local Storage** - Perfect for development and testing
 - **AWS S3** - Industry-standard cloud storage
 - **Cloudflare R2** - S3-compatible with zero egress fees
-- **Local Storage** - Perfect for development and testing
+- **Cloudinary** - Media platform with generous free tier
 - **Custom Adapters** - Extend to any storage provider
 
-### Point-in-Time Recovery (PITR)
-- **WAL Archiving** - Continuous backup of database changes
-- **Restore to Any Point** - Go back to any second within retention period
-- **Timeline Management** - Handle multiple recovery scenarios
-
-### Automatic Retention
-- **Policy-Based Cleanup** - Age and count-based retention rules
-- **Daily Automation** - Scheduled cleanup at 3 AM
-- **Space Reclamation** - Track and report storage savings
-- **Min/Max Safeguards** - Never delete too many or too few backups
-
-### Developer-Friendly
-- **TypeScript-First** - Full type safety and IntelliSense
-- **NestJS Architecture** - Modular, testable, and maintainable
-- **Programmatic API** - Use in your Node.js applications
-- **CLI Tools** - Command-line interface for operations (coming soon)
+### Advanced Features
+- **Point-in-Time Recovery** - Restore PostgreSQL to any point in time
+- **Automatic Retention** - Policy-based cleanup with age and count rules
+- **Email Alerts** - SMTP integration for backup notifications
+- **Scheduled Backups** - Cron-based automation
+- **Compression** - Brotli compression with 70-90% size reduction
 
 ---
 
-## Quick Start
-
-### Prerequisites
-- Node.js 18+
-- PostgreSQL 12+
-- pnpm (or npm/yarn)
-
-### Installation
+## Installation
 
 ```bash
-# Install DBDock
 npm install dbdock
-# or
-pnpm add dbdock
-# or
-yarn add dbdock
 ```
 
-### Configuration
+Or use directly with npx (no installation required):
 
-DBDock uses **JSON config by default** with environment variable fallback.
+```bash
+npx dbdock init
+```
 
-#### Option 1: JSON Config (Recommended)
+---
 
-Create `dbdock.config.json` in your project root:
+## CLI Reference
+
+### Initialize Configuration
+
+Create a new configuration file with an interactive wizard:
+
+```bash
+npx dbdock init
+```
+
+This will guide you through:
+- PostgreSQL connection details
+- Storage provider setup (Local, S3, Cloudflare R2, Cloudinary)
+- Encryption and compression options
+
+### Create Backup
+
+Run an immediate backup:
+
+```bash
+npx dbdock backup
+```
+
+#### Backup with CLI Flags
+
+Override encryption and compression settings without modifying the config file:
+
+```bash
+npx dbdock backup --encrypt --compress
+
+npx dbdock backup --no-encrypt --compress --compression-level 9
+
+npx dbdock backup --encrypt --encryption-key your-64-character-hex-key --compress
+```
+
+**Available Flags:**
+- `--encrypt` - Enable encryption for this backup
+- `--no-encrypt` - Disable encryption for this backup
+- `--compress` - Enable compression for this backup
+- `--no-compress` - Disable compression for this backup
+- `--encryption-key <key>` - Encryption key (32 bytes, 64 hex characters)
+- `--compression-level <level>` - Compression level (0-11, default: 6)
+
+### Restore Backup
+
+Interactively select and restore from available backups:
+
+```bash
+npx dbdock restore
+```
+
+### Test Configuration
+
+Verify database connection and storage configuration:
+
+```bash
+npx dbdock test
+```
+
+### Manage Schedules
+
+View, add, or remove backup schedules:
+
+```bash
+npx dbdock schedule
+```
+
+---
+
+## Configuration
+
+After running `npx dbdock init`, you'll have a `dbdock.config.json` file:
 
 ```json
 {
-  "postgres": {
+  "database": {
+    "type": "postgres",
     "host": "localhost",
     "port": 5432,
-    "user": "postgres",
+    "username": "postgres",
     "password": "your-password",
     "database": "myapp"
   },
   "storage": {
-    "provider": "local",
-    "bucket": "dbdock-backups",
-    "localPath": "./backups"
+    "provider": "s3",
+    "s3": {
+      "bucket": "my-backups",
+      "region": "us-east-1",
+      "accessKeyId": "YOUR_ACCESS_KEY",
+      "secretAccessKey": "YOUR_SECRET_KEY"
+    }
   },
-  "encryption": {
-    "enabled": true,
-    "secret": "your-32-character-secret-key-here",
-    "iterations": 100000
-  },
-  "pitr": {
-    "enabled": false,
-    "retentionDays": 30
+  "backup": {
+    "compression": {
+      "enabled": true,
+      "level": 6
+    },
+    "encryption": {
+      "enabled": true,
+      "key": "your-32-character-encryption-key"
+    }
   }
 }
 ```
 
-**Tip:** Copy from the example:
-```bash
-cp node_modules/dbdock/dbdock.config.example.json dbdock.config.json
-```
+### Environment Variables
 
-#### Option 2: Environment Variables (Fallback)
-
-If `dbdock.config.json` doesn't exist, DBDock reads from environment variables:
+You can override any configuration value with environment variables:
 
 ```bash
-# Database
-DB_HOST=localhost
-DB_PORT=5432
-DB_USER=postgres
-DB_PASSWORD=your-password
-DB_NAME=myapp
+export DBDOCK_DB_HOST=production-db.example.com
+export DBDOCK_DB_PASSWORD=prod-password
+export DBDOCK_S3_BUCKET=prod-backups
 
-# Storage
-STORAGE_PROVIDER=local
-STORAGE_BUCKET=dbdock-backups
-STORAGE_LOCAL_PATH=./backups
-
-# Encryption
-ENCRYPTION_ENABLED=true
-ENCRYPTION_SECRET=your-32-character-secret-key-here
-ENCRYPTION_ITERATIONS=100000
-
-# PITR
-PITR_ENABLED=false
-PITR_RETENTION_DAYS=30
+npx dbdock backup
 ```
 
-#### Option 3: Custom Config Path
+### Custom Config Path
+
+Use a custom configuration file location:
 
 ```bash
-# Use a custom config file location
-DBDOCK_CONFIG_PATH=/etc/dbdock/production.config.json
-```
-
-**Best Practice:** Use JSON config for development, environment variables for production/Docker.
-
-### Create Your First Backup
-
-```typescript
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from 'dbdock';
-import { BackupService } from 'dbdock';
-
-async function backup() {
-  const app = await NestFactory.createApplicationContext(AppModule);
-  const backupService = app.get(BackupService);
-
-  const result = await backupService.createBackup({
-    compress: true,
-    encrypt: true,
-  });
-
-  console.log('Backup completed!');
-  console.log(`ID: ${result.metadata.id}`);
-  console.log(`Size: ${(result.metadata.size / 1024 / 1024).toFixed(2)} MB`);
-  console.log(`Compressed: ${(result.metadata.compressedSize / 1024 / 1024).toFixed(2)} MB`);
-  console.log(`Duration: ${(result.metadata.duration / 1000).toFixed(2)}s`);
-
-  await app.close();
-}
-
-backup();
-```
-
-**Output:**
-```
-Backup completed!
-ID: 550e8400-e29b-41d4-a716-446655440000
-Size: 128.50 MB
-Compressed: 32.15 MB
-Duration: 45.32s
+export DBDOCK_CONFIG_PATH=/path/to/config.json
+npx dbdock backup
 ```
 
 ---
 
-## Usage
+## Programmatic Usage
 
-### Basic Backup
+Use DBDock in your Node.js or NestJS applications:
+
+### NestJS Integration
 
 ```typescript
-// Simple backup with defaults
-const result = await backupService.createBackup();
+import { Module } from '@nestjs/common';
+import { DBDockModule } from 'dbdock';
 
-// Customize options
-const result = await backupService.createBackup({
-  compress: true,
-  encrypt: true,
-  schemas: ['public', 'auth'],
-  tables: ['users', 'posts'],
-});
+@Module({
+  imports: [
+    DBDockModule.forRoot({
+      database: {
+        type: 'postgres',
+        host: 'localhost',
+        port: 5432,
+        username: 'postgres',
+        password: process.env.DB_PASSWORD,
+        database: 'myapp',
+      },
+      storage: {
+        provider: 's3',
+        s3: {
+          bucket: 'my-backups',
+          region: 'us-east-1',
+          accessKeyId: process.env.AWS_ACCESS_KEY,
+          secretAccessKey: process.env.AWS_SECRET_KEY,
+        },
+      },
+      backup: {
+        compression: { enabled: true, level: 6 },
+        encryption: { enabled: true, key: process.env.ENCRYPTION_KEY },
+      },
+    }),
+  ],
+})
+export class AppModule {}
 ```
 
-### List Backups
+### Create Backup
 
 ```typescript
-const backups = await backupService.listBackups();
+import { BackupService } from 'dbdock';
 
-backups.forEach(backup => {
-  console.log(`${backup.id} | ${backup.database} | ${backup.startTime}`);
-  console.log(`  Status: ${backup.status}`);
-  console.log(`  Size: ${(backup.size / 1024 / 1024).toFixed(2)} MB`);
-});
+@Injectable()
+export class MyService {
+  constructor(private backupService: BackupService) {}
+
+  async createBackup() {
+    const result = await this.backupService.createBackup();
+    console.log(`Backup ID: ${result.metadata.id}`);
+    console.log(`Size: ${result.metadata.size} bytes`);
+  }
+}
 ```
 
-### Retention Management
+### Restore Backup
 
 ```typescript
-const retentionService = app.get(RetentionService);
-
-// Get retention report
-const report = await retentionService.getRetentionReport();
-console.log(`Total backups: ${report.totalBackups}`);
-console.log(`To delete: ${report.backupsToDelete}`);
-console.log(`Space to reclaim: ${(report.spaceToReclaim / 1024 / 1024).toFixed(2)} MB`);
-
-// Apply retention policy
-const result = await retentionService.applyRetentionPolicy();
-console.log(`Deleted ${result.backupsDeleted} backups`);
-console.log(`Freed ${(result.spaceSaved / 1024 / 1024).toFixed(2)} MB`);
+async restore() {
+  await this.backupService.restoreBackup('backup-id-here');
+  console.log('Restore completed');
+}
 ```
 
-### Custom Retention Policy
+### Schedule Backups
 
 ```typescript
-await retentionService.applyRetentionPolicy({
-  backupRetentionDays: 90,
-  walRetentionDays: 30,
-  minBackupsToKeep: 5,
-  maxBackupsToKeep: 100,
-});
-```
-
-### WAL Archiving for PITR
-
-```typescript
-// Archive WAL file
-const walArchiver = app.get(WalArchiverService);
-await walArchiver.archiveWalFile({
-  walFile: '000000010000000000000001',
-  walPath: '/var/lib/postgresql/wal_archive/000000010000000000000001',
-});
-
-// List archived WAL files
-const walFiles = await walArchiver.listWalFiles();
-console.log(`${walFiles.length} WAL files archived`);
+DBDockModule.forRoot({
+  // ... other config
+  backup: {
+    schedules: [
+      {
+        name: 'Daily Backup',
+        cron: '0 2 * * *',
+        enabled: true,
+      },
+    ],
+  },
+})
 ```
 
 ---
 
 ## Storage Providers
 
-### Local Storage (Development)
+### Local Storage
 
 ```json
 {
   "storage": {
     "provider": "local",
-    "bucket": "dbdock-backups",
-    "localPath": "./backups"
+    "local": {
+      "path": "./backups"
+    }
   }
 }
 ```
 
-**Best for:** Development, testing, small deployments
-
-### AWS S3 (Production)
+### AWS S3
 
 ```json
 {
   "storage": {
     "provider": "s3",
-    "bucket": "my-backup-bucket",
-    "endpoint": "https://s3.us-west-2.amazonaws.com",
-    "accessKeyId": "AKIA...",
-    "secretAccessKey": "..."
+    "s3": {
+      "bucket": "my-backups",
+      "region": "us-east-1",
+      "accessKeyId": "YOUR_ACCESS_KEY",
+      "secretAccessKey": "YOUR_SECRET_KEY"
+    }
   }
 }
 ```
 
-**Best for:** Production deployments, enterprise use
-
-### Cloudflare R2 (Cost-Effective)
+### Cloudflare R2
 
 ```json
 {
   "storage": {
-    "provider": "r2",
-    "bucket": "my-backup-bucket",
-    "endpoint": "abc123.r2.cloudflarestorage.com",
-    "accessKeyId": "...",
-    "secretAccessKey": "..."
+    "provider": "s3",
+    "s3": {
+      "bucket": "my-backups",
+      "region": "auto",
+      "endpoint": "https://YOUR_ACCOUNT_ID.r2.cloudflarestorage.com",
+      "accessKeyId": "YOUR_ACCESS_KEY",
+      "secretAccessKey": "YOUR_SECRET_KEY"
+    }
   }
 }
 ```
 
-**Best for:** High-traffic apps, zero egress fees
-
----
-
-## Security Best Practices
-
-### 1. Secure Your Encryption Key
-
-```bash
-# Don't hardcode secrets
-ENCRYPTION_SECRET=my-secret-key
-
-# Use environment variables
-ENCRYPTION_SECRET=$(cat /run/secrets/dbdock-encryption-key)
-
-# Use secret managers
-ENCRYPTION_SECRET=$(aws secretsmanager get-secret-value --secret-id dbdock-key)
-```
-
-### 2. Use Strong Encryption
+### Cloudinary
 
 ```json
 {
-  "encryption": {
-    "enabled": true,
-    "secret": "use-at-least-32-chars-random-key",
-    "iterations": 100000
+  "storage": {
+    "provider": "cloudinary",
+    "cloudinary": {
+      "cloudName": "your-cloud-name",
+      "apiKey": "your-api-key",
+      "apiSecret": "your-api-secret"
+    }
   }
 }
 ```
 
-### 3. Test Your Backups
+---
 
-```bash
-# Schedule regular restore tests
-0 0 * * 0 /usr/local/bin/dbdock-test-restore.sh
+## Point-in-Time Recovery (PostgreSQL)
+
+Enable continuous backup and restore to any point in time:
+
+```json
+{
+  "backup": {
+    "pitr": {
+      "enabled": true,
+      "walArchiveCommand": "dbdock wal-archive %p"
+    }
+  }
+}
 ```
 
-### 4. Enable Versioning
+Restore to a specific point in time:
 
-Enable versioning on your S3/R2 bucket for extra protection against accidental deletion.
+```typescript
+await backupService.restoreBackup('backup-id', {
+  targetTime: new Date('2024-01-15T14:30:00Z'),
+});
+```
+
+See [Point-in-Time Recovery Documentation](./docs/pitr.md) for full setup guide.
+
+---
+
+## Email Alerts
+
+Get notified when backups succeed or fail:
+
+```json
+{
+  "alerts": {
+    "email": {
+      "enabled": true,
+      "smtp": {
+        "host": "smtp.gmail.com",
+        "port": 587,
+        "secure": false,
+        "auth": {
+          "user": "your-email@gmail.com",
+          "pass": "your-app-password"
+        }
+      },
+      "from": "backups@yourapp.com",
+      "to": ["admin@yourapp.com", "devops@yourapp.com"]
+    }
+  }
+}
+```
+
+---
+
+## Retention Policies
+
+Automatically clean up old backups:
+
+```json
+{
+  "backup": {
+    "retention": {
+      "enabled": true,
+      "maxAge": 30,
+      "maxCount": 100,
+      "minCount": 5
+    }
+  }
+}
+```
 
 ---
 
 ## Documentation
 
-- **[CONFIGURATION.md](CONFIGURATION.md)** - Complete configuration guide (JSON vs ENV)
-- **[USAGE.md](USAGE.md)** - Usage guide with code examples
-- **[WAL_SETUP.md](WAL_SETUP.md)** - Point-in-Time Recovery setup
-- **[prd.md](prd.md)** - Product requirements and roadmap
+- [Quick Start Guide](./docs/quick-start.md)
+- [CLI Reference](./docs/cli-reference.md)
+- [Configuration Guide](./CONFIGURATION.md)
+- [Storage Providers](./docs/storage-providers.md)
+- [Point-in-Time Recovery](./docs/pitr.md)
+- [Email Alerts](./ALERTS.md)
+- [Programmatic Usage](./docs/programmatic-usage.md)
 
 ---
 
-## Architecture
+## Requirements
 
-DBDock is built on NestJS with a modular architecture:
-
-```
-┌─────────────────┐
-│   Application   │
-└────────┬────────┘
-         │
-    ┌────▼────┐
-    │  Config │
-    └────┬────┘
-         │
-    ┌────▼───────────────────┐
-    │   Backup Service       │
-    │  ┌──────────────────┐  │
-    │  │  pg_dump Stream  │  │
-    │  └────────┬─────────┘  │
-    │           ▼            │
-    │  ┌──────────────────┐  │
-    │  │   Compression    │  │
-    │  └────────┬─────────┘  │
-    │           ▼            │
-    │  ┌──────────────────┐  │
-    │  │   Encryption     │  │
-    │  └────────┬─────────┘  │
-    │           ▼            │
-    │  ┌──────────────────┐  │
-    │  │  Storage Upload  │  │
-    │  └──────────────────┘  │
-    └────────────────────────┘
-             │
-    ┌────────▼────────┐
-    │  Storage Layer  │
-    │  ┌────┐ ┌────┐  │
-    │  │ S3 │ │ R2 │  │
-    │  └────┘ └────┘  │
-    │  ┌──────────┐   │
-    │  │  Local   │   │
-    │  └──────────┘   │
-    └─────────────────┘
-```
-
-### Key Components
-
-- **Config Module** - Type-safe configuration with validation
-- **Backup Module** - pg_dump integration and streaming pipeline
-- **Crypto Module** - AES-256-GCM encryption
-- **Storage Module** - Pluggable storage adapters
-- **WAL Module** - Point-in-time recovery support
-- **Scheduler Module** - Automated retention and cleanup
-- **Retention Module** - Policy-based backup management
+- Node.js 18 or higher
+- PostgreSQL 12+ (for PostgreSQL backups)
+- MySQL 5.7+ (for MySQL backups)
+- MongoDB 4.4+ (for MongoDB backups)
 
 ---
 
-## Development
+## Troubleshooting
 
-### Setup
+### "pg_dump command not found"
 
-```bash
-# Clone the repository
-git clone https://github.com/naheemolaide/dbdock.git
-cd dbdock
-
-# Install dependencies
-pnpm install
-
-# Copy example config
-cp dbdock.config.example.json dbdock.config.json
-
-# Edit config with your settings
-nano dbdock.config.json
-```
-
-### Run in Development
+Install PostgreSQL client tools:
 
 ```bash
-pnpm start:dev
+brew install postgresql
 ```
 
-### Build
+### "Database connection failed"
+
+Test your connection:
 
 ```bash
-pnpm build
+npx dbdock test
 ```
 
-### Test
+Verify credentials in `dbdock.config.json`
 
-```bash
-# Unit tests
-pnpm test
+### "S3 access denied"
 
-# E2E tests
-pnpm test:e2e
+Ensure your IAM user has these permissions:
+- `s3:PutObject`
+- `s3:GetObject`
+- `s3:ListBucket`
 
-# Test coverage
-pnpm test:cov
-```
+### More Issues?
 
----
-
-## Performance
-
-DBDock is optimized for performance and efficiency:
-
-- **Streaming Processing** - Memory usage stays constant regardless of database size
-- **Parallel Compression** - Multi-threaded Brotli compression
-- **Smart Chunking** - Optimal chunk sizes for network transfer
-- **Progress Tracking** - Real-time progress updates
-
-### Benchmark (1GB Database)
-
-| Operation | Time | Memory | Compression Ratio |
-|-----------|------|--------|-------------------|
-| Backup (uncompressed) | 45s | 50MB | - |
-| Backup (compressed) | 52s | 50MB | 75% |
-| Backup (compressed + encrypted) | 58s | 50MB | 75% |
+Check the [troubleshooting guide](./docs/troubleshooting.md) or [open an issue](https://github.com/naheemolaide/dbdock/issues).
 
 ---
 
 ## Contributing
 
-Contributions are welcome! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
-
-### Ways to Contribute
-
-- Report bugs
-- Suggest features
-- Improve documentation
-- Submit pull requests
-- Star the project
+Contributions are welcome! Please read the [contributing guide](./CONTRIBUTING.md) first.
 
 ---
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
-
----
-
-## Acknowledgments
-
-Built with:
-- [NestJS](https://nestjs.com/) - Progressive Node.js framework
-- [PostgreSQL](https://www.postgresql.org/) - World's most advanced open source database
-- [AWS SDK](https://aws.amazon.com/sdk-for-javascript/) - S3 integration
+MIT License - see [LICENSE](./LICENSE) file for details.
 
 ---
 
 ## Support
 
-- Email: naheemolaide@gmail.com
-- Issues: [GitHub Issues](https://github.com/naheemolaide/dbdock/issues)
-- npm: [npmjs.com/package/dbdock](https://www.npmjs.com/package/dbdock)
+- GitHub Issues: [Report a bug](https://github.com/naheemolaide/dbdock/issues)
+- Discussions: [Ask questions](https://github.com/naheemolaide/dbdock/discussions)
 
 ---
 
 <div align="center">
-  <p>Made with care by developers, for developers</p>
+  <p>Made with ❤️ for developers who value their data</p>
   <p>
-    <a href="https://github.com/naheemolaide/dbdock">Star on GitHub</a> •
-    <a href="https://www.npmjs.com/package/dbdock">View on npm</a>
+    <a href="https://github.com/naheemolaide/dbdock">GitHub</a> •
+    <a href="https://www.npmjs.com/package/dbdock">npm</a>
   </p>
 </div>

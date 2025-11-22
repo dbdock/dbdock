@@ -108,7 +108,9 @@ import { AppModule } from './app.module';
 import { WalArchiverService } from './wal/wal-archiver.service';
 
 async function archiveWal() {
-  const app = await NestFactory.createApplicationContext(AppModule);
+  const app = await NestFactory.createApplicationContext(AppModule, {
+    logger: ['error', 'warn'],
+  });
   const walArchiver = app.get(WalArchiverService);
 
   const result = await walArchiver.archiveWalFile({

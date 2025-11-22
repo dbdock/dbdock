@@ -4,6 +4,7 @@ import { IStorageAdapter } from './storage.interface';
 import { LocalStorageAdapter } from './adapters/local.adapter';
 import { S3StorageAdapter } from './adapters/s3.adapter';
 import { R2StorageAdapter } from './adapters/r2.adapter';
+import { CloudinaryStorageAdapter } from './adapters/cloudinary.adapter';
 import { StorageProvider } from '../config/config.schema';
 
 @Injectable()
@@ -54,6 +55,19 @@ export class StorageService {
           secretAccessKey: storageConfig.secretAccessKey,
         });
         this.logger.log('Initialized R2 storage adapter');
+        break;
+
+      case StorageProvider.CLOUDINARY:
+        if (!storageConfig.accessKeyId || !storageConfig.secretAccessKey) {
+          throw new Error('Cloudinary credentials are required');
+        }
+        this.adapter = new CloudinaryStorageAdapter({
+          cloudName: storageConfig.bucket,
+          apiKey: storageConfig.accessKeyId,
+          apiSecret: storageConfig.secretAccessKey,
+          folder: storageConfig.endpoint,
+        });
+        this.logger.log('Initialized Cloudinary storage adapter');
         break;
 
       default:

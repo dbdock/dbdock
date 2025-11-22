@@ -1,35 +1,32 @@
 {
-  "postgres": {
+  "database": {
+    "type": "postgres",
     "host": "localhost",
     "port": 5432,
-    "user": "postgres",
+    "username": "postgres",
     "password": "your-password",
-    "database": "your-database"
+    "database": "myapp"
   },
   "storage": {
     "provider": "local",
-    "bucket": "dbdock-backups",
-    "localPath": "./backups"
+    "local": {
+      "path": "./backups"
+    }
   },
-  "encryption": {
-    "enabled": true,
-    "secret": "YOUR-LONG-SECRET-KEY-CHANGE-THIS",
-    "iterations": 100000
-  },
-  "schedule": {
-    "type": "cron",
-    "expression": "0 2 * * *"
-  },
-  "pitr": {
-    "enabled": false,
-    "walIntervalSeconds": 300,
-    "retentionDays": 30
-  },
-  "alerts": {
-    "smtpHost": "smtp.gmail.com",
-    "smtpPort": 587,
-    "smtpUser": "noreply@example.com",
-    "smtpPass": "your-smtp-password",
-    "to": ["admin@example.com"]
+  "backup": {
+    "compression": {
+      "enabled": true,
+      "level": 6
+    },
+    "encryption": {
+      "enabled": false
+    },
+    "schedules": [
+      {
+        "name": "Daily Backup",
+        "cron": "0 2 * * *",
+        "enabled": true
+      }
+    ]
   }
 }

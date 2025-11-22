@@ -31,6 +31,7 @@ class PostgresConfig {
 export enum StorageProvider {
   S3 = 's3',
   R2 = 'r2',
+  CLOUDINARY = 'cloudinary',
   LOCAL = 'local',
 }
 
@@ -112,6 +113,10 @@ class AlertsConfig {
 
   @IsString()
   smtpPass: string;
+
+  @IsString()
+  @IsOptional()
+  from?: string;
 
   @IsArray()
   @IsString({ each: true })

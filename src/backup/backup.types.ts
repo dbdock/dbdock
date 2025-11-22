@@ -43,4 +43,5 @@ export interface BackupOptions {
 export interface BackupResult {
   metadata: BackupMetadata;
   storageKey: string;
+  downloadUrl?: string;
 }

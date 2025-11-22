@@ -82,8 +82,11 @@ export class S3StorageAdapter implements IStorageAdapter {
         etag: result.ETag,
       };
     } catch (error) {
-      this.logger.error(`Failed to upload ${options.key}: ${error.message}`);
-      throw error;
+      const friendlyMessage = this.getFriendlyError(error);
+      this.logger.error(`Failed to upload ${options.key}: ${friendlyMessage}`);
+      const cleanError = new Error(friendlyMessage);
+      cleanError.name = 'StorageConfigurationError';
+      throw cleanError;
     }
   }
 
@@ -102,8 +105,11 @@ export class S3StorageAdapter implements IStorageAdapter {
 
       return response.Body as Readable;
     } catch (error) {
-      this.logger.error(`Failed to download ${options.key}: ${error.message}`);
-      throw error;
+      const friendlyMessage = this.getFriendlyError(error);
+      this.logger.error(`Failed to download ${options.key}: ${friendlyMessage}`);
+      const cleanError = new Error(friendlyMessage);
+      cleanError.name = 'StorageConfigurationError';
+      throw cleanError;
     }
   }
 
@@ -128,8 +134,11 @@ export class S3StorageAdapter implements IStorageAdapter {
         lastModified: obj.LastModified || new Date(),
       }));
     } catch (error) {
-      this.logger.error(`Failed to list objects: ${error.message}`);
-      throw error;
+      const friendlyMessage = this.getFriendlyError(error);
+      this.logger.error(`Failed to list objects: ${friendlyMessage}`);
+      const cleanError = new Error(friendlyMessage);
+      cleanError.name = 'StorageConfigurationError';
+      throw cleanError;
     }
   }
 
@@ -144,8 +153,11 @@ export class S3StorageAdapter implements IStorageAdapter {
 
       this.logger.log(`Deleted ${options.key} from S3`);
     } catch (error) {
-      this.logger.error(`Failed to delete ${options.key}: ${error.message}`);
-      throw error;
+      const friendlyMessage = this.getFriendlyError(error);
+      this.logger.error(`Failed to delete ${options.key}: ${friendlyMessage}`);
+      const cleanError = new Error(friendlyMessage);
+      cleanError.name = 'StorageConfigurationError';
+      throw cleanError;
     }
   }
 
@@ -162,10 +174,13 @@ export class S3StorageAdapter implements IStorageAdapter {
 
       return url;
     } catch (error) {
+      const friendlyMessage = this.getFriendlyError(error);
       this.logger.error(
-        `Failed to generate presigned URL for ${options.key}: ${error.message}`,
+        `Failed to generate presigned URL for ${options.key}: ${friendlyMessage}`,
       );
-      throw error;
+      const cleanError = new Error(friendlyMessage);
+      cleanError.name = 'StorageConfigurationError';
+      throw cleanError;
     }
   }
 
@@ -184,5 +199,41 @@ export class S3StorageAdapter implements IStorageAdapter {
       }
       throw error;
     }
+  }
+
+  private getFriendlyError(error: unknown): string {
+    const err = error as any;
+    const code = err?.code;
+    const message = err?.message || '';
+
+    if (code === 'EPROTO' || message.includes('SSL') || message.includes('TLS')) {
+      return 'Invalid storage configuration: SSL/TLS handshake failed. Please verify your endpoint URL, access key ID, and secret access key are correct.';
+    }
+
+    if (code === 'ENOTFOUND' || message.includes('getaddrinfo')) {
+      return 'Invalid storage configuration: Could not resolve endpoint hostname. Please verify your endpoint URL is correct.';
+    }
+
+    if (code === 'SignatureDoesNotMatch' || message.includes('signature')) {
+      return 'Invalid storage configuration: Authentication failed. Please verify your access key ID and secret access key are correct.';
+    }
+
+    if (code === 'InvalidAccessKeyId') {
+      return 'Invalid storage configuration: Access key ID not found. Please verify your access key ID is correct.';
+    }
+
+    if (code === 'NoSuchBucket') {
+      return `Invalid storage configuration: Bucket "${this.bucket}" does not exist. Please verify your bucket name is correct.`;
+    }
+
+    if (code === 'AccessDenied' || code === 'Forbidden') {
+      return 'Invalid storage configuration: Access denied. Please verify your credentials have the necessary permissions for this bucket.';
+    }
+
+    if (code === 'ETIMEDOUT' || code === 'ECONNREFUSED') {
+      return 'Invalid storage configuration: Connection failed. Please verify your endpoint URL and network connectivity.';
+    }
+
+    return message || 'Unknown storage error occurred';
   }
 }

@@ -1,12 +1,15 @@
 {
   "name": "dbdock",
-  "version": "1.0.1",
-  "description": "Enterprise-grade PostgreSQL backup & restore with encryption, compression, and point-in-time recovery",
+  "version": "1.1.0",
+  "description": "Database backup and restore in under 60 seconds. CLI-first tool with encryption, compression, and multi-cloud storage support.",
   "author": "Naheem Olaide <naheemolaide@gmail.com>",
   "private": false,
   "license": "MIT",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "dbdock": "dist/cli/index.js"
+  },
   "files": [
     "dist",
     "dbdock.config.example.json",
@@ -14,21 +17,30 @@
     "LICENSE",
     "CONFIGURATION.md",
     "USAGE.md",
+    "ALERTS.md",
     "WAL_SETUP.md"
   ],
   "keywords": [
-    "postgresql",
-    "postgres",
+    "database",
     "backup",
     "restore",
-    "database",
-    "pitr",
-    "wal",
+    "cli",
+    "postgresql",
+    "postgres",
+    "mysql",
+    "mongodb",
+    "sqlite",
     "encryption",
     "compression",
     "s3",
     "cloudflare-r2",
-    "nestjs"
+    "cloudinary",
+    "pitr",
+    "wal",
+    "nestjs",
+    "database-backup",
+    "backup-tool",
+    "cli-tool"
   ],
   "repository": {
     "type": "git",
@@ -56,11 +68,13 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:cov": "jest --coverage",
+    "test": "jest --passWithNoTests",
+    "test:watch": "jest --watch --passWithNoTests",
+    "test:cov": "jest --coverage --passWithNoTests",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "test:unit": "jest --testMatch='**/*.spec.ts' --passWithNoTests",
+    "test:integration": "jest --testMatch='test/integration/**/*.spec.ts' --passWithNoTests"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.927.0",
@@ -74,8 +88,15 @@
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/schedule": "^6.0.1",
     "@types/uuid": "^11.0.0",
+    "chalk": "^5.6.2",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
+    "cloudinary": "^2.8.0",
+    "commander": "^14.0.2",
+    "inquirer": "^9.3.8",
+    "node-fetch": "^3.3.2",
+    "nodemailer": "^7.0.10",
+    "ora": "^9.0.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "uuid": "^13.0.0"
@@ -87,8 +108,10 @@
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.1",
     "@types/express": "^5.0.0",
+    "@types/inquirer": "^9.0.9",
     "@types/jest": "^30.0.0",
     "@types/node": "^22.10.7",
+    "@types/nodemailer": "^7.0.4",
     "@types/supertest": "^6.0.2",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
@@ -112,15 +135,24 @@
       "json",
       "ts"
     ],
-    "rootDir": "src",
-    "testRegex": ".*\\.spec\\.ts$",
+    "rootDir": ".",
+    "testMatch": [
+      "<rootDir>/src/**/*.spec.ts",
+      "<rootDir>/test/integration/**/*.spec.ts"
+    ],
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "collectCoverageFrom": [
-      "**/*.(t|j)s"
+      "src/**/*.(t|j)s",
+      "!src/**/*.spec.ts",
+      "!src/**/*.interface.ts",
+      "!src/**/*.types.ts"
     ],
-    "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "coverageDirectory": "coverage",
+    "testEnvironment": "node",
+    "moduleNameMapper": {
+      "^src/(.*)$": "<rootDir>/src/$1"
+    }
   }
 }

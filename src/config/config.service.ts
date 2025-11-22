@@ -36,11 +36,13 @@ export class DBDockConfigService {
     });
 
     if (errors.length > 0) {
-      const errorMessages = errors
-        .map((error) => Object.values(error.constraints || {}).join(', '))
-        .join('; ');
-      throw new Error(`Configuration validation failed: ${errorMessages}`);
+      const friendlyErrors = this.formatValidationErrors(errors);
+      throw new Error(
+        `❌ DBDock Configuration Error:\n\n${friendlyErrors}\n\nPlease check your dbdock.config.json or environment variables.`,
+      );
     }
+
+    this.validateStorageProvider(configInstance);
 
     this.config = configInstance;
   }
@@ -87,5 +89,65 @@ export class DBDockConfigService {
 
   getConfig(): DBDockConfig {
     return this.config;
+  }
+
+  private formatValidationErrors(errors: any[]): string {
+    const fieldErrors: string[] = [];
+
+    errors.forEach((error) => {
+      const field = error.property;
+      const constraints = error.constraints || {};
+      const messages = Object.values(constraints);
+
+      if (messages.length > 0) {
+        fieldErrors.push(`  • ${field}: ${messages.join(', ')}`);
+      }
+
+      if (error.children && error.children.length > 0) {
+        error.children.forEach((child: any) => {
+          const childField = `${field}.${child.property}`;
+          const childConstraints = child.constraints || {};
+          const childMessages = Object.values(childConstraints);
+
+          if (childMessages.length > 0) {
+            fieldErrors.push(`  • ${childField}: ${childMessages.join(', ')}`);
+          }
+        });
+      }
+    });
+
+    return fieldErrors.join('\n');
+  }
+
+  private validateStorageProvider(config: DBDockConfig): void {
+    const { provider, accessKeyId, secretAccessKey, endpoint, localPath } =
+      config.storage;
+
+    if (
+      (provider === 's3' || provider === 'r2' || provider === 'cloudinary') &&
+      (!accessKeyId || !secretAccessKey)
+    ) {
+      throw new Error(
+        `❌ DBDock Configuration Error:\n\n  • storage.accessKeyId and storage.secretAccessKey are required for ${provider} provider\n\nPlease check your dbdock.config.json or environment variables.`,
+      );
+    }
+
+    if ((provider === 's3' || provider === 'r2') && !endpoint) {
+      throw new Error(
+        `❌ DBDock Configuration Error:\n\n  • storage.endpoint is required for ${provider} provider\n\nPlease check your dbdock.config.json or environment variables.`,
+      );
+    }
+
+    if (provider === 'local' && !localPath) {
+      throw new Error(
+        `❌ DBDock Configuration Error:\n\n  • storage.localPath is required for local provider\n\nPlease check your dbdock.config.json or environment variables.`,
+      );
+    }
+
+    if (config.encryption.enabled && !config.encryption.secret) {
+      throw new Error(
+        `❌ DBDock Configuration Error:\n\n  • encryption.secret is required when encryption is enabled\n\nPlease check your dbdock.config.json or environment variables.`,
+      );
+    }
   }
 }

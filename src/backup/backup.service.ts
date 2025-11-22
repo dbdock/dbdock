@@ -1,8 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { DBDockConfigService } from '../config/config.service';
+import { StorageProvider } from '../config/config.schema';
 import { StorageService } from '../storage/storage.service';
 import { CryptoService } from '../crypto/crypto.service';
 import { CompressionService } from './compression.service';
+import { AlertService } from '../alerts/alert.service';
 import { DBDockLogger } from '../utils/logger';
 import { CounterStream, ProgressStream } from '../utils/stream.pipe';
 import {
@@ -13,23 +15,31 @@ import {
   BackupType,
 } from './backup.types';
 import { spawn } from 'child_process';
-import { v4 as uuidv4 } from 'uuid';
-import { pipeline } from 'stream/promises';
-import { Readable } from 'stream';
+import { Readable, Transform } from 'stream';
 
 @Injectable()
 export class BackupService {
   private readonly logger = new DBDockLogger(BackupService.name);
+  private uuidv4Promise: Promise<() => string> | null = null;
 
   constructor(
     private configService: DBDockConfigService,
     private storageService: StorageService,
     private cryptoService: CryptoService,
     private compressionService: CompressionService,
+    private alertService: AlertService,
   ) {}
 
+  private async getUuidv4(): Promise<string> {
+    if (!this.uuidv4Promise) {
+      this.uuidv4Promise = import('uuid').then((uuid) => uuid.v4);
+    }
+    const uuidv4 = await this.uuidv4Promise;
+    return uuidv4();
+  }
+
   async createBackup(options: BackupOptions = {}): Promise<BackupResult> {
-    const backupId = uuidv4();
+    const backupId = await this.getUuidv4();
     const startTime = new Date();
 
     const metadata: BackupMetadata = {
@@ -47,9 +57,13 @@ export class BackupService {
 
     this.logger.logBackupStart(backupId, metadata.type);
 
+    let pgDumpProcess: ReturnType<typeof spawn> | null = null;
+
     try {
-      const pgStream = this.createPgDumpStream(options);
-      const streams: Readable[] = [pgStream];
+      const { stream: pgStream, process: pgProc } =
+        this.createPgDumpStream(options);
+      pgDumpProcess = pgProc;
+      const streams: (Readable | Transform)[] = [pgStream];
 
       const counterStream = new CounterStream();
       streams.push(counterStream);
@@ -69,17 +83,19 @@ export class BackupService {
         streams.push(encryptStream);
       }
 
-      const progressStream = new ProgressStream(1024 * 1024, (bytes) => {
+      const progressStream = new ProgressStream(5 * 1024 * 1024, (bytes) => {
         this.logger.log(
-          `Backup ${backupId} progress: ${(bytes / 1024 / 1024).toFixed(2)} MB`,
+          `Progress: ${(bytes / 1024 / 1024).toFixed(2)} MB processed`,
         );
       });
       streams.push(progressStream);
 
-      const combinedStream = streams.reduce(
-        (prev, curr) => prev.pipe(curr as any),
-        streams[0],
-      ) as Readable;
+      let combinedStream: Readable | Transform = streams[0];
+      for (let i = 1; i < streams.length; i++) {
+        combinedStream = combinedStream.pipe(
+          streams[i] as NodeJS.WritableStream,
+        ) as Readable | Transform;
+      }
 
       const storageAdapter = this.storageService.getAdapter();
       const uploadResult = await storageAdapter.uploadStream(combinedStream, {
@@ -93,24 +109,53 @@ export class BackupService {
         },
       });
 
+      this.logger.log('Upload completed, processing metadata...');
+
+      if (pgDumpProcess && !pgDumpProcess.killed) {
+        pgDumpProcess.kill('SIGTERM');
+      }
+
       const endTime = new Date();
       metadata.endTime = endTime;
       metadata.duration = endTime.getTime() - startTime.getTime();
       metadata.size = counterStream.getBytesProcessed();
       metadata.compressedSize = compressedCounter.getBytesProcessed();
+
+      if (metadata.size === 0) {
+        throw new Error(
+          'Backup failed: pg_dump produced no output. Database may be empty or connection failed.',
+        );
+      }
+
       metadata.status = BackupStatus.COMPLETED;
 
-      this.logger.logBackupComplete(
-        backupId,
-        metadata.duration,
-        metadata.size,
-      );
+      this.logger.logBackupComplete(backupId, metadata.duration, metadata.size);
 
+      this.logger.log('Saving metadata...');
       await this.saveMetadata(metadata);
+      this.logger.log('Metadata saved');
+
+      let downloadUrl: string | undefined;
+
+      try {
+        downloadUrl = await storageAdapter.generatePresignedUrl({
+          key: uploadResult.key,
+          expiresIn: 604800,
+        });
+        this.logger.log('Download URL (valid for 7 days):');
+        this.logger.log(downloadUrl);
+      } catch {
+        this.logger.warn(
+          'Could not generate download URL (local storage or error)',
+        );
+      }
+
+      await this.alertService.sendBackupSuccessAlert(metadata, downloadUrl);
 
       return {
         metadata,
         storageKey: uploadResult.key,
+        downloadUrl,
       };
     } catch (error) {
       metadata.status = BackupStatus.FAILED;
@@ -121,11 +166,16 @@ export class BackupService {
 
       await this.saveMetadata(metadata);
 
+      await this.alertService.sendBackupFailureAlert(metadata, error as Error);
+
       throw error;
     }
   }
 
-  private createPgDumpStream(options: BackupOptions): Readable {
+  private createPgDumpStream(options: BackupOptions): {
+    stream: Readable;
+    process: ReturnType<typeof spawn>;
+  } {
     const pgConfig = this.configService.get('postgres');
 
     const args = [
@@ -160,21 +210,54 @@ export class BackupService {
       },
     });
 
-    pgDump.stderr.on('data', (data) => {
-      this.logger.log(`pg_dump: ${data.toString()}`);
+    const stderrChunks: Buffer[] = [];
+    pgDump.stderr.on('data', (data: Buffer) => {
+      stderrChunks.push(data);
     });
 
     pgDump.on('error', (error) => {
-      this.logger.error(`pg_dump error: ${error.message}`);
+      this.logger.error(`pg_dump spawn error: ${error.message}`);
+      pgDump.stdout.destroy(error);
     });
 
-    return pgDump.stdout;
+    pgDump.stdout.on('error', (error) => {
+      this.logger.error(`pg_dump stdout error: ${error.message}`);
+    });
+
+    pgDump.stdout.on('end', () => {
+      this.logger.log('pg_dump stdout ended');
+    });
+
+    pgDump.on('exit', (code, signal) => {
+      this.logger.log(
+        `pg_dump exited with code ${code}${signal ? ` and signal ${signal}` : ''}`,
+      );
+
+      if (code !== 0) {
+        const errorMessage = Buffer.concat(stderrChunks).toString();
+        const error = new Error(
+          `pg_dump exited with code ${code}${signal ? ` and signal ${signal}` : ''}. ${errorMessage}`,
+        );
+        this.logger.error(error.message);
+      }
+    });
+
+    return { stream: pgDump.stdout, process: pgDump };
   }
 
   private generateStorageKey(backupId: string, timestamp: Date): string {
     const database = this.configService.get('postgres').database;
     const dateStr = timestamp.toISOString().split('T')[0];
-    const timeStr = timestamp.toISOString().split('T')[1].replace(/:/g, '-').split('.')[0];
+    const timeStr = timestamp
+      .toISOString()
+      .split('T')[1]
+      .replace(/:/g, '-')
+      .split('.')[0];
+
+    const storageConfig = this.configService.get('storage');
+    if (storageConfig.provider === StorageProvider.LOCAL) {
+      return `${database}/${dateStr}/${backupId}_${timeStr}.backup`;
+    }
 
     return `backups/${database}/${dateStr}/${backupId}_${timeStr}.backup`;
   }
@@ -197,8 +280,8 @@ export class BackupService {
       prefix: 'backups/',
     });
 
-    const metadataObject = objects.find((obj) =>
-      obj.key.includes(backupId) && obj.key.endsWith('.metadata.json'),
+    const metadataObject = objects.find(
+      (obj) => obj.key.includes(backupId) && obj.key.endsWith('.metadata.json'),
     );
 
     if (!metadataObject) {
@@ -215,7 +298,7 @@ export class BackupService {
     }
 
     const metadataJson = Buffer.concat(chunks).toString('utf-8');
-    return JSON.parse(metadataJson);
+    return JSON.parse(metadataJson) as BackupMetadata;
   }
 
   async listBackups(): Promise<BackupMetadata[]> {

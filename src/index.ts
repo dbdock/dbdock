@@ -1,4 +1,5 @@
 export { AppModule } from './app.module';
+export { createDBDock } from './dbdock';
 
 export { BackupService } from './backup/backup.service';
 export { BackupModule } from './backup/backup.module';
@@ -31,3 +32,8 @@ export { SchedulerModule } from './scheduler/scheduler.module';
 
 export { DBDockLogger } from './utils/logger';
 export { CounterStream, ProgressStream } from './utils/stream.pipe';
+
+export { AlertService } from './alerts/alert.service';
+export { AlertModule } from './alerts/alert.module';
+export * from './alerts/alert.types';
+export { DEFAULT_TEMPLATES } from './alerts/alert-templates';

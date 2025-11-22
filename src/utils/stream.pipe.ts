@@ -13,6 +13,10 @@ export class CounterStream extends Transform {
     callback();
   }
 
+  _flush(callback: TransformCallback): void {
+    callback();
+  }
+
   getBytesProcessed(): number {
     return this.bytesProcessed;
   }
