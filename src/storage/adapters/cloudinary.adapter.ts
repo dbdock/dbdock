@@ -73,15 +73,18 @@ export class CloudinaryStorageAdapter implements IStorageAdapter {
   async downloadStream(options: DownloadOptions): Promise<Readable> {
     try {
       const { default: fetch } = await import('node-fetch');
+
       const url = cloudinary.url(options.key, {
         resource_type: 'raw',
         type: 'upload',
+        secure: true,
       });
 
+      this.logger.log(`Downloading from URL: ${url}`);
       const response = await fetch(url);
 
       if (!response.ok) {
-        throw new Error(`Failed to download: ${response.statusText}`);
+        throw new Error(`Failed to download: ${response.statusText} (${response.status})`);
       }
 
       return response.body as unknown as Readable;

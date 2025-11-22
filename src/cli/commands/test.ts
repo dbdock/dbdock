@@ -24,6 +24,12 @@ export async function testCommand(): Promise<void> {
     await testStorageConfiguration(config);
     spinner.succeed('Storage configuration valid');
 
+    if (config.alerts?.email?.enabled) {
+      spinner.start('Testing email configuration...');
+      await testEmailConfiguration(config);
+      spinner.succeed('Email configuration valid');
+    }
+
     logger.success('\nAll tests passed! Your configuration is ready to use.');
   } catch (error) {
     spinner.fail('Test failed');
@@ -93,18 +99,18 @@ async function testStorageConfiguration(config: any): Promise<void> {
     if (!existsSync(path)) {
       throw new Error(`Local storage path does not exist: ${path}`);
     }
-  } else if (storageConfig.provider === 's3') {
+  } else if (storageConfig.provider === 's3' || storageConfig.provider === 'r2') {
     if (!storageConfig.s3?.bucket) {
-      throw new Error('S3 bucket name is required');
+      throw new Error('S3/R2 bucket name is required');
     }
     if (!storageConfig.s3?.region) {
-      throw new Error('S3 region is required');
+      throw new Error('S3/R2 region is required');
     }
     if (!storageConfig.s3?.accessKeyId) {
-      throw new Error('S3 access key ID is required');
+      throw new Error('S3/R2 access key ID is required');
     }
     if (!storageConfig.s3?.secretAccessKey) {
-      throw new Error('S3 secret access key is required');
+      throw new Error('S3/R2 secret access key is required');
     }
   } else if (storageConfig.provider === 'cloudinary') {
     if (!storageConfig.cloudinary?.cloudName) {
@@ -115,6 +121,75 @@ async function testStorageConfiguration(config: any): Promise<void> {
     }
     if (!storageConfig.cloudinary?.apiSecret) {
       throw new Error('Cloudinary API secret is required');
+    }
+  }
+}
+
+async function testEmailConfiguration(config: any): Promise<void> {
+  const emailConfig = config.alerts?.email;
+
+  if (!emailConfig) {
+    throw new Error('Email configuration is missing');
+  }
+
+  if (!emailConfig.smtp?.host) {
+    throw new Error('SMTP host is required');
+  }
+
+  if (!emailConfig.smtp?.port) {
+    throw new Error('SMTP port is required');
+  }
+
+  if (!emailConfig.smtp?.auth?.user) {
+    throw new Error('SMTP username is required');
+  }
+
+  if (!emailConfig.smtp?.auth?.pass) {
+    throw new Error('SMTP password is required');
+  }
+
+  if (!emailConfig.from) {
+    throw new Error('From email address is required');
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(emailConfig.from)) {
+    throw new Error(`Invalid from email address: ${emailConfig.from}`);
+  }
+
+  if (!emailConfig.to || emailConfig.to.length === 0) {
+    throw new Error('At least one recipient email address is required');
+  }
+
+  for (const email of emailConfig.to) {
+    if (!emailRegex.test(email)) {
+      throw new Error(`Invalid recipient email address: ${email}`);
+    }
+  }
+
+  const nodemailer = await import('nodemailer');
+  const transporter = nodemailer.default.createTransport({
+    host: emailConfig.smtp.host,
+    port: emailConfig.smtp.port,
+    secure: emailConfig.smtp.secure,
+    auth: {
+      user: emailConfig.smtp.auth.user,
+      pass: emailConfig.smtp.auth.pass,
+    },
+  });
+
+  try {
+    await transporter.verify();
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage.includes('Invalid login')) {
+      throw new Error('SMTP authentication failed. Please check your username and password');
+    } else if (errorMessage.includes('ECONNREFUSED')) {
+      throw new Error(`Cannot connect to SMTP server at ${emailConfig.smtp.host}:${emailConfig.smtp.port}`);
+    } else if (errorMessage.includes('ETIMEDOUT')) {
+      throw new Error(`Connection timeout to SMTP server at ${emailConfig.smtp.host}:${emailConfig.smtp.port}`);
+    } else {
+      throw new Error(`SMTP connection failed: ${errorMessage}`);
     }
   }
 }

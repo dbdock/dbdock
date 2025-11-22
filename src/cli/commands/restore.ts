@@ -68,7 +68,7 @@ export async function restoreCommand(): Promise<void> {
           cloudName: config.storage.cloudinary.cloudName,
           apiKey: config.storage.cloudinary.apiKey,
           apiSecret: config.storage.cloudinary.apiSecret,
-          folder: config.storage.cloudinary.folder,
+          folder: 'dbdock_backups',
         });
         break;
 
@@ -80,21 +80,91 @@ export async function restoreCommand(): Promise<void> {
     spinner.start('Loading backups...');
     let objects: StorageObject[];
     try {
-      objects = await adapter.listObjects({ prefix: 'backup-' });
+      let prefix: string;
+      if (config.storage.provider === 'local') {
+        prefix = 'backup-';
+      } else if (config.storage.provider === 'cloudinary') {
+        prefix = 'backup-';
+      } else {
+        prefix = 'dbdock_backups/backup-';
+      }
+
+      objects = await adapter.listObjects({ prefix });
       objects = objects
         .filter(obj => obj.key.includes('backup-') && obj.key.endsWith('.sql'))
         .sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime());
     } catch (err) {
       spinner.fail('Failed to list backups');
-      logger.error(err instanceof Error ? err.message : String(err));
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      logger.error(`\n${errorMessage}\n`);
+
+      if (config.storage.provider === 's3') {
+        logger.info('Common S3 issues:');
+        logger.log('  • Verify AWS credentials are correct');
+        logger.log('  • Ensure IAM user has s3:ListBucket permission');
+        logger.log('  • Check bucket name and region are correct');
+        logger.log('  • Verify bucket exists and is accessible');
+      } else if (config.storage.provider === 'r2') {
+        logger.info('Common R2 issues:');
+        logger.log('  • Verify R2 API token is correct');
+        logger.log('  • Ensure endpoint URL is correct');
+        logger.log('  • Check bucket name is correct');
+        logger.log('  • Verify bucket exists and is accessible');
+      } else if (config.storage.provider === 'cloudinary') {
+        logger.info('Common Cloudinary issues:');
+        logger.log('  • Verify cloud name, API key, and secret are correct');
+        logger.log('  • Check your Cloudinary account is active');
+        logger.log('  • Ensure API credentials have media library access');
+      } else if (config.storage.provider === 'local') {
+        const localPath = config.storage.local?.path || './backups';
+        logger.info('Common local storage issues:');
+        logger.log(`  • Verify directory exists: ${localPath}`);
+        logger.log('  • Check you have read permissions');
+        logger.log('  • Ensure path is correct in dbdock.config.json');
+      }
+
+      logger.info('\nTo test your configuration, run:');
+      logger.log('  npx dbdock test');
       process.exit(1);
     }
 
     spinner.succeed(`Found ${objects.length} backup(s)`);
 
     if (objects.length === 0) {
-      logger.error('No backups found');
-      logger.info('Run "npx dbdock backup" to create a backup first');
+      logger.error('\nNo backups found');
+
+      if (config.storage.provider === 'local') {
+        const localPath = config.storage.local?.path || './backups';
+        logger.info('\nPlease verify:');
+        logger.log(`  • Backup files exist in: ${localPath}`);
+        logger.log(`  • Files are named: backup-*.sql`);
+        logger.log(`  • You have read permissions on the directory`);
+      } else if (config.storage.provider === 's3') {
+        const bucket = config.storage.s3?.bucket || '';
+        logger.info('\nPlease verify:');
+        logger.log(`  • Backups exist in S3 bucket: ${bucket}`);
+        logger.log(`  • Files are in folder: dbdock_backups/`);
+        logger.log(`  • Files are named: backup-*.sql`);
+        logger.log(`  • Your AWS credentials have s3:ListBucket permission`);
+      } else if (config.storage.provider === 'r2') {
+        const bucket = config.storage.s3?.bucket || '';
+        logger.info('\nPlease verify:');
+        logger.log(`  • Backups exist in R2 bucket: ${bucket}`);
+        logger.log(`  • Files are in folder: dbdock_backups/`);
+        logger.log(`  • Files are named: backup-*.sql`);
+        logger.log(`  • Your R2 credentials have read permissions`);
+      } else if (config.storage.provider === 'cloudinary') {
+        const cloudName = config.storage.cloudinary?.cloudName || '';
+        logger.info('\nPlease verify:');
+        logger.log(`  • Backups exist in Cloudinary cloud: ${cloudName}`);
+        logger.log(`  • Files are in folder: dbdock_backups`);
+        logger.log(`  • Files are named: backup-*.sql`);
+        logger.log(`  • Your API credentials are correct`);
+        logger.log(`  • Check: https://console.cloudinary.com/console/${cloudName}/media_library/folders/dbdock_backups`);
+      }
+
+      logger.info('\nTo create a backup, run:');
+      logger.log('  npx dbdock backup');
       process.exit(1);
     }
 
@@ -102,7 +172,7 @@ export async function restoreCommand(): Promise<void> {
     const currentDbStats = await getCurrentDatabaseStats(config);
     spinner.succeed('Database analysis complete');
 
-    logger.info('\n📊 Current Database Statistics:');
+    logger.info('\nCurrent Database Statistics:');
     logger.log(`  Database: ${currentDbStats.name}`);
     logger.log(`  Tables: ${currentDbStats.tables}`);
     logger.log(`  Total Size: ${currentDbStats.size}`);
@@ -122,7 +192,7 @@ export async function restoreCommand(): Promise<void> {
 
     const selectedBackupObj = objects.find(obj => obj.key === selectedBackup);
     if (selectedBackupObj) {
-      logger.info('\n📦 Selected Backup Details:');
+      logger.info('\nSelected Backup Details:');
       logger.log(`  Backup: ${selectedBackup}`);
       logger.log(`  Size: ${(selectedBackupObj.size / 1024 / 1024).toFixed(2)} MB`);
       logger.log(`  Created: ${selectedBackupObj.lastModified.toLocaleString()}`);

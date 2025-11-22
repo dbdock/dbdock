@@ -14,6 +14,7 @@ interface BackupResult {
   storageKey: string;
   size: number;
   duration: number;
+  downloadUrl?: string;
 }
 
 export async function createBackupStandalone(
@@ -26,7 +27,7 @@ export async function createBackupStandalone(
 
   const storageKey = config.storage.provider === 'local'
     ? join(config.storage.local?.path || './backups', filename)
-    : filename;
+    : `dbdock_backups/${filename}`;
 
   if (config.storage.provider === 'local') {
     const dir = dirname(storageKey);
@@ -34,12 +35,21 @@ export async function createBackupStandalone(
   }
 
   const dbConfig = config.database;
+
+  const formatMap: Record<string, string> = {
+    'custom': 'c',
+    'plain': 'p',
+    'directory': 'd',
+    'tar': 't',
+  };
+
+  const format = config.backup?.format || 'custom';
   const pgDumpArgs = [
     '-h', dbConfig.host || 'localhost',
     '-p', String(dbConfig.port || 5432),
     '-U', dbConfig.username || 'postgres',
     '-d', dbConfig.database || 'postgres',
-    '-F', 'c',
+    '-F', formatMap[format] || 'c',
     '--no-password',
   ];
 
@@ -53,6 +63,20 @@ export async function createBackupStandalone(
   let stream: Readable | Transform = pgDumpProcess.stdout;
   const streams: (Readable | Transform)[] = [stream];
 
+  let pgDumpErrorMessages: string[] = [];
+  let pgDumpExitCode: number | null = null;
+
+  pgDumpProcess.stderr.on('data', (data) => {
+    const message = data.toString().trim();
+    if (!message.includes('NOTICE') && message) {
+      pgDumpErrorMessages.push(message);
+    }
+  });
+
+  pgDumpProcess.on('close', (code) => {
+    pgDumpExitCode = code;
+  });
+
   if (config.backup?.compression?.enabled) {
     const compressStream = createBrotliCompress({
       params: {
@@ -64,10 +88,23 @@ export async function createBackupStandalone(
   }
 
   if (config.backup?.encryption?.enabled && config.backup.encryption.key) {
+    const keyBuffer = Buffer.from(config.backup.encryption.key, 'hex');
+
+    if (keyBuffer.length !== 32) {
+      throw new Error(
+        `Invalid encryption key length: ${keyBuffer.length} bytes (expected 32 bytes)\n\n` +
+        `Your key: "${config.backup.encryption.key}" (${config.backup.encryption.key.length} characters)\n\n` +
+        `Please fix:\n` +
+        `  • Encryption key must be exactly 64 hexadecimal characters (32 bytes)\n` +
+        `  • Generate a valid key: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"\n` +
+        `  • Update the "backup.encryption.key" in your dbdock.config.json`
+      );
+    }
+
     const iv = randomBytes(16);
     const cipher = createCipheriv(
       'aes-256-cbc',
-      Buffer.from(config.backup.encryption.key),
+      keyBuffer,
       iv,
     );
     stream = stream.pipe(cipher);
@@ -84,14 +121,18 @@ export async function createBackupStandalone(
     stream.pipe(writeStream);
 
     await new Promise<void>((resolve, reject) => {
-      writeStream.on('finish', () => resolve());
-      writeStream.on('error', reject);
-      pgDumpProcess.on('error', reject);
-      pgDumpProcess.stderr.on('data', (data) => {
-        const message = data.toString();
-        if (!message.includes('NOTICE')) {
-          console.error('pg_dump error:', message);
+      writeStream.on('finish', () => {
+        if (pgDumpExitCode !== null && pgDumpExitCode !== 0) {
+          reject(new Error(formatPgDumpError(pgDumpExitCode, pgDumpErrorMessages, dbConfig)));
+        } else if (pgDumpErrorMessages.length > 0 && totalSize === 0) {
+          reject(new Error(formatPgDumpError(1, pgDumpErrorMessages, dbConfig)));
+        } else {
+          resolve();
         }
+      });
+      writeStream.on('error', reject);
+      pgDumpProcess.on('error', (err) => {
+        reject(new Error(`Failed to execute pg_dump: ${err.message}\n\nPlease ensure PostgreSQL client tools are installed:\n  macOS: brew install postgresql\n  Ubuntu/Debian: sudo apt-get install postgresql-client`));
       });
     });
   } else if (config.storage.provider === 's3' || config.storage.provider === 'r2') {
@@ -122,15 +163,32 @@ export async function createBackupStandalone(
     });
 
     await new Promise<void>((resolve, reject) => {
+      let uploadCompleted = false;
+
       upload.done()
-        .then(() => resolve())
+        .then(() => {
+          uploadCompleted = true;
+          if (pgDumpExitCode !== null && pgDumpExitCode !== 0) {
+            reject(new Error(formatPgDumpError(pgDumpExitCode, pgDumpErrorMessages, dbConfig)));
+          } else if (pgDumpErrorMessages.length > 0 && totalSize === 0) {
+            reject(new Error(formatPgDumpError(1, pgDumpErrorMessages, dbConfig)));
+          } else {
+            resolve();
+          }
+        })
         .catch(reject);
 
-      pgDumpProcess.on('error', reject);
-      pgDumpProcess.stderr.on('data', (data) => {
-        const message = data.toString();
-        if (!message.includes('NOTICE')) {
-          console.error('pg_dump error:', message);
+      pgDumpProcess.on('error', (err) => {
+        reject(new Error(`Failed to execute pg_dump: ${err.message}\n\nPlease ensure PostgreSQL client tools are installed:\n  macOS: brew install postgresql\n  Ubuntu/Debian: sudo apt-get install postgresql-client`));
+      });
+
+      pgDumpProcess.on('close', (code) => {
+        if (code !== null && code !== 0 && !uploadCompleted) {
+          setTimeout(() => {
+            if (!uploadCompleted) {
+              reject(new Error(formatPgDumpError(code, pgDumpErrorMessages, dbConfig)));
+            }
+          }, 1000);
         }
       });
     });
@@ -147,15 +205,22 @@ export async function createBackupStandalone(
     });
 
     await new Promise<void>((resolve, reject) => {
+      let uploadCompleted = false;
+
       const uploadStream = cloudinary.uploader.upload_stream(
         {
           resource_type: 'raw',
-          folder: 'dbdock-backups',
+          folder: 'dbdock_backups',
           public_id: `backup-${timestamp}-${backupId}`,
         },
         (error, result) => {
+          uploadCompleted = true;
           if (error) {
             reject(error);
+          } else if (pgDumpExitCode !== null && pgDumpExitCode !== 0) {
+            reject(new Error(formatPgDumpError(pgDumpExitCode, pgDumpErrorMessages, dbConfig)));
+          } else if (pgDumpErrorMessages.length > 0 && totalSize === 0) {
+            reject(new Error(formatPgDumpError(1, pgDumpErrorMessages, dbConfig)));
           } else {
             resolve();
           }
@@ -164,11 +229,17 @@ export async function createBackupStandalone(
 
       stream.pipe(uploadStream);
 
-      pgDumpProcess.on('error', reject);
-      pgDumpProcess.stderr.on('data', (data) => {
-        const message = data.toString();
-        if (!message.includes('NOTICE')) {
-          console.error('pg_dump error:', message);
+      pgDumpProcess.on('error', (err) => {
+        reject(new Error(`Failed to execute pg_dump: ${err.message}\n\nPlease ensure PostgreSQL client tools are installed:\n  macOS: brew install postgresql\n  Ubuntu/Debian: sudo apt-get install postgresql-client`));
+      });
+
+      pgDumpProcess.on('close', (code) => {
+        if (code !== null && code !== 0 && !uploadCompleted) {
+          setTimeout(() => {
+            if (!uploadCompleted) {
+              reject(new Error(formatPgDumpError(code, pgDumpErrorMessages, dbConfig)));
+            }
+          }, 1000);
         }
       });
     });
@@ -176,12 +247,126 @@ export async function createBackupStandalone(
     throw new Error(`Storage provider ${config.storage.provider} not yet implemented in standalone mode`);
   }
 
+
   const duration = Date.now() - startTime;
+
+  let downloadUrl: string | undefined;
+
+  if (config.storage.provider === 's3') {
+    const s3Config = config.storage.s3;
+    const region = s3Config?.region || 'us-east-1';
+    const bucket = s3Config?.bucket || '';
+    downloadUrl = `https://${bucket}.s3.${region}.amazonaws.com/${storageKey}`;
+  } else if (config.storage.provider === 'r2') {
+    const s3Config = config.storage.s3;
+    const bucket = s3Config?.bucket || '';
+    const endpoint = s3Config?.endpoint || '';
+    if (endpoint) {
+      const accountId = endpoint.match(/https:\/\/([^.]+)/)?.[1] || '';
+      downloadUrl = `${endpoint}/${bucket}/${storageKey}`;
+    }
+  } else if (config.storage.provider === 'cloudinary') {
+    const cloudinaryConfig = config.storage.cloudinary;
+    const cloudName = cloudinaryConfig?.cloudName || '';
+    const resourcePath = storageKey.replace('dbdock_backups/', '');
+    downloadUrl = `https://res.cloudinary.com/${cloudName}/raw/upload/dbdock_backups/${resourcePath}`;
+  }
 
   return {
     backupId,
     storageKey,
     size: totalSize,
     duration,
+    downloadUrl,
   };
+}
+
+function formatPgDumpError(exitCode: number, errorMessages: string[], dbConfig: any): string {
+  const errorMessage = errorMessages.join('\n');
+  const host = dbConfig.host || 'localhost';
+  const port = dbConfig.port || 5432;
+  const username = dbConfig.username || 'postgres';
+  const database = dbConfig.database || 'postgres';
+
+  if (errorMessage.includes('database') && errorMessage.includes('does not exist')) {
+    const dbMatch = errorMessage.match(/database "([^"]+)" does not exist/);
+    const dbName = dbMatch ? dbMatch[1] : database;
+    return (
+      `Database "${dbName}" does not exist\n\n` +
+      `Connection details:\n` +
+      `  Host: ${host}\n` +
+      `  Port: ${port}\n` +
+      `  Database: ${dbName}\n\n` +
+      `Please verify:\n` +
+      `  • Database name is correct in dbdock.config.json\n` +
+      `  • Database exists on the server\n` +
+      `  • You can connect: psql -h ${host} -p ${port} -U ${username} -d ${dbName}`
+    );
+  }
+
+  if (errorMessage.includes('could not connect') || errorMessage.includes('Connection refused') || errorMessage.includes('ECONNREFUSED')) {
+    return (
+      `Cannot connect to PostgreSQL server\n\n` +
+      `Connection details:\n` +
+      `  Host: ${host}\n` +
+      `  Port: ${port}\n\n` +
+      `Please verify:\n` +
+      `  • PostgreSQL server is running\n` +
+      `  • Host and port are correct in dbdock.config.json\n` +
+      `  • Network/firewall allows connection\n` +
+      `  • Test connection: psql -h ${host} -p ${port} -U ${username} -d ${database}`
+    );
+  }
+
+  if (errorMessage.includes('authentication failed') || errorMessage.includes('password authentication failed')) {
+    return (
+      `Authentication failed for user "${username}"\n\n` +
+      `Connection details:\n` +
+      `  Host: ${host}\n` +
+      `  Port: ${port}\n` +
+      `  Username: ${username}\n` +
+      `  Database: ${database}\n\n` +
+      `Please verify:\n` +
+      `  • Username is correct in dbdock.config.json\n` +
+      `  • Password is correct in dbdock.config.json\n` +
+      `  • User exists and has access to the database\n` +
+      `  • Test connection: psql -h ${host} -p ${port} -U ${username} -d ${database}`
+    );
+  }
+
+  if (errorMessage.includes('permission denied')) {
+    return (
+      `Permission denied for user "${username}"\n\n` +
+      `The user does not have sufficient privileges to perform backup.\n\n` +
+      `Please verify:\n` +
+      `  • User has read permissions on the database\n` +
+      `  • User has necessary privileges for pg_dump\n` +
+      `  • Grant access: GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${username};`
+    );
+  }
+
+  if (errorMessage.includes('no password supplied')) {
+    return (
+      `No password provided for user "${username}"\n\n` +
+      `Please add the database password to dbdock.config.json:\n` +
+      `  "database": {\n` +
+      `    "password": "your-database-password"\n` +
+      `  }`
+    );
+  }
+
+  if (errorMessages.length > 0) {
+    return (
+      `pg_dump failed with exit code ${exitCode}\n\n` +
+      `Error details:\n${errorMessage}\n\n` +
+      `Connection settings:\n` +
+      `  Host: ${host}\n` +
+      `  Port: ${port}\n` +
+      `  Username: ${username}\n` +
+      `  Database: ${database}\n\n` +
+      `Please check your configuration and database connection.`
+    );
+  }
+
+  return `pg_dump failed with exit code ${exitCode}. Please check your database configuration.`;
 }

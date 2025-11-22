@@ -8,12 +8,12 @@ import { testCommand } from './commands/test';
 import { scheduleCommand } from './commands/schedule';
 
 process.on('SIGINT', () => {
-  console.log('\n\n✓ Operation cancelled by user');
+  console.log('\n\nOperation cancelled by user');
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
-  console.log('\n\n✓ Operation terminated');
+  console.log('\n\nOperation terminated');
   process.exit(0);
 });
 
@@ -22,7 +22,7 @@ const program = new Command();
 program
   .name('dbdock')
   .description('Enterprise-grade database backup and restore tool')
-  .version('1.1.0');
+  .version('1.0.0');
 
 program
   .command('init')

@@ -36,6 +36,7 @@ export interface CLIConfig {
     };
   };
   backup?: {
+    format?: 'custom' | 'plain' | 'directory' | 'tar';
     compression?: {
       enabled: boolean;
       level?: number;
@@ -49,6 +50,23 @@ export interface CLIConfig {
       cron: string;
       enabled: boolean;
     }>;
+  };
+  alerts?: {
+    email?: {
+      enabled: boolean;
+      smtp: {
+        host: string;
+        port: number;
+        secure: boolean;
+        auth: {
+          user: string;
+          pass: string;
+        };
+      };
+      from: string;
+      to: string[];
+      customTemplate?: string;
+    };
   };
 }
 

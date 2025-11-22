@@ -2,6 +2,8 @@ import inquirer from 'inquirer';
 import { saveConfig, configExists, CONFIG_FILE, CLIConfig } from '../utils/config';
 import { logger } from '../utils/logger';
 import { Logger } from '@nestjs/common';
+import { existsSync, readFileSync, writeFileSync, appendFileSync } from 'fs';
+import { join } from 'path';
 
 Logger.overrideLogger(false);
 
@@ -61,6 +63,18 @@ export async function initCommand(): Promise<void> {
       type: 'input',
       name: 'database',
       message: 'Database name:',
+    },
+    {
+      type: 'list',
+      name: 'backupFormat',
+      message: 'Select backup format:',
+      choices: [
+        { name: 'Custom format (compressed binary, recommended)', value: 'custom' },
+        { name: 'Plain SQL (text format)', value: 'plain' },
+        { name: 'Directory format (parallel dump)', value: 'directory' },
+        { name: 'Tar archive', value: 'tar' },
+      ],
+      default: 'custom',
     },
     {
       type: 'list',
@@ -187,6 +201,85 @@ export async function initCommand(): Promise<void> {
       default: '6',
       when: (answers) => answers.enableCompression,
     },
+    {
+      type: 'confirm',
+      name: 'enableEmailAlerts',
+      message: 'Enable email alerts for backup notifications?',
+      default: false,
+    },
+    {
+      type: 'input',
+      name: 'smtpHost',
+      message: 'SMTP host:',
+      default: 'smtp.gmail.com',
+      when: (answers) => answers.enableEmailAlerts,
+    },
+    {
+      type: 'number',
+      name: 'smtpPort',
+      message: 'SMTP port:',
+      default: 587,
+      when: (answers) => answers.enableEmailAlerts,
+    },
+    {
+      type: 'confirm',
+      name: 'smtpSecure',
+      message: 'Use secure connection (TLS)?',
+      default: false,
+      when: (answers) => answers.enableEmailAlerts,
+    },
+    {
+      type: 'input',
+      name: 'smtpUser',
+      message: 'SMTP username/email:',
+      when: (answers) => answers.enableEmailAlerts,
+      validate: (input: string) => {
+        if (!input.trim()) {
+          return 'SMTP username is required';
+        }
+        return true;
+      },
+    },
+    {
+      type: 'password',
+      name: 'smtpPassword',
+      message: 'SMTP password/app password:',
+      when: (answers) => answers.enableEmailAlerts,
+      validate: (input: string) => {
+        if (!input.trim()) {
+          return 'SMTP password is required';
+        }
+        return true;
+      },
+    },
+    {
+      type: 'input',
+      name: 'emailFrom',
+      message: 'From email address:',
+      when: (answers) => answers.enableEmailAlerts,
+      validate: (input: string) => {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(input)) {
+          return 'Please enter a valid email address';
+        }
+        return true;
+      },
+    },
+    {
+      type: 'input',
+      name: 'emailTo',
+      message: 'To email address(es) (comma-separated):',
+      when: (answers) => answers.enableEmailAlerts,
+      validate: (input: string) => {
+        const emails = input.split(',').map(e => e.trim());
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        const allValid = emails.every(email => emailRegex.test(email));
+        if (!allValid) {
+          return 'Please enter valid email address(es) separated by commas';
+        }
+        return true;
+      },
+    },
   ]);
 
   const config: CLIConfig = {
@@ -197,6 +290,17 @@ export async function initCommand(): Promise<void> {
       username: answers.username,
       password: answers.password,
       database: answers.database,
+    },
+    backup: {
+      format: answers.backupFormat,
+      compression: {
+        enabled: answers.enableCompression,
+        level: answers.enableCompression ? parseInt(answers.compressionLevel) : undefined,
+      },
+      encryption: {
+        enabled: answers.enableEncryption,
+        key: answers.encryptionKey,
+      },
     },
     storage: {
       provider: answers.storageProvider,
@@ -220,21 +324,126 @@ export async function initCommand(): Promise<void> {
         },
       }),
     },
-    backup: {
-      compression: {
-        enabled: answers.enableCompression,
-        level: answers.enableCompression ? parseInt(answers.compressionLevel) : undefined,
+    ...(answers.enableEmailAlerts && {
+      alerts: {
+        email: {
+          enabled: true,
+          smtp: {
+            host: answers.smtpHost,
+            port: answers.smtpPort,
+            secure: answers.smtpSecure,
+            auth: {
+              user: answers.smtpUser,
+              pass: answers.smtpPassword,
+            },
+          },
+          from: answers.emailFrom,
+          to: answers.emailTo.split(',').map((email: string) => email.trim()),
+        },
       },
-      encryption: {
-        enabled: answers.enableEncryption,
-        key: answers.encryptionKey,
-      },
-    },
+    }),
   };
 
   saveConfig(config);
   logger.success(`Configuration saved to ${CONFIG_FILE}`);
-  logger.info('Next steps:');
+
+  const gitignoreStatus = updateGitignore(config);
+  if (gitignoreStatus.configUpdated) {
+    logger.success(`${CONFIG_FILE} added to .gitignore`);
+  } else if (gitignoreStatus.configAlreadyExists) {
+    logger.info(`${CONFIG_FILE} is already in .gitignore`);
+  } else if (gitignoreStatus.created) {
+    logger.success(`.gitignore created with ${CONFIG_FILE}`);
+  }
+
+  if (gitignoreStatus.localPathUpdated) {
+    logger.success(`${config.storage.local?.path} added to .gitignore`);
+  } else if (gitignoreStatus.localPathAlreadyExists) {
+    logger.info(`${config.storage.local?.path} is already in .gitignore`);
+  }
+
+  logger.info('\nNext steps:');
   logger.log('  - Run "npx dbdock test" to verify your configuration');
   logger.log('  - Run "npx dbdock backup" to create your first backup');
+}
+
+interface GitignoreStatus {
+  configUpdated: boolean;
+  configAlreadyExists: boolean;
+  localPathUpdated: boolean;
+  localPathAlreadyExists: boolean;
+  created: boolean;
+}
+
+function updateGitignore(config: CLIConfig): GitignoreStatus {
+  const gitignorePath = join(process.cwd(), '.gitignore');
+  const configEntry = CONFIG_FILE;
+  const entriesToAdd: string[] = [configEntry];
+
+  if (config.storage.provider === 'local' && config.storage.local?.path) {
+    const localPath = config.storage.local.path;
+    const normalizedPath = localPath.replace(/^\.\//, '').replace(/\/$/, '');
+    entriesToAdd.push(normalizedPath);
+  }
+
+  const status: GitignoreStatus = {
+    configUpdated: false,
+    configAlreadyExists: false,
+    localPathUpdated: false,
+    localPathAlreadyExists: false,
+    created: false,
+  };
+
+  if (!existsSync(gitignorePath)) {
+    writeFileSync(gitignorePath, entriesToAdd.join('\n') + '\n');
+    status.created = true;
+    status.configUpdated = true;
+    if (entriesToAdd.length > 1) {
+      status.localPathUpdated = true;
+    }
+    return status;
+  }
+
+  const gitignoreContent = readFileSync(gitignorePath, 'utf-8');
+  const lines = gitignoreContent.split('\n');
+
+  const configAlreadyIgnored = lines.some(line => {
+    const trimmed = line.trim();
+    return trimmed === configEntry ||
+           trimmed === `/${configEntry}` ||
+           trimmed === `./${configEntry}`;
+  });
+
+  status.configAlreadyExists = configAlreadyIgnored;
+
+  let localPathAlreadyIgnored = false;
+  if (entriesToAdd.length > 1) {
+    const localPath = entriesToAdd[1];
+    localPathAlreadyIgnored = lines.some(line => {
+      const trimmed = line.trim();
+      return trimmed === localPath ||
+             trimmed === `/${localPath}` ||
+             trimmed === `./${localPath}` ||
+             trimmed === `${localPath}/`;
+    });
+    status.localPathAlreadyExists = localPathAlreadyIgnored;
+  }
+
+  const newEntries: string[] = [];
+  if (!configAlreadyIgnored) {
+    newEntries.push(configEntry);
+    status.configUpdated = true;
+  }
+  if (entriesToAdd.length > 1 && !localPathAlreadyIgnored) {
+    newEntries.push(entriesToAdd[1]);
+    status.localPathUpdated = true;
+  }
+
+  if (newEntries.length > 0) {
+    const needsNewline = gitignoreContent.length > 0 && !gitignoreContent.endsWith('\n');
+    const contentToAdd = needsNewline ? `\n${newEntries.join('\n')}\n` : `${newEntries.join('\n')}\n`;
+    appendFileSync(gitignorePath, contentToAdd);
+  }
+
+  return status;
 }
