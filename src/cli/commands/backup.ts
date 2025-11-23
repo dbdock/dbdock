@@ -3,6 +3,12 @@ import { loadConfig, CLIConfig } from '../utils/config';
 import { logger } from '../utils/logger';
 import { createBackupStandalone } from '../../standalone/backup-standalone';
 import { Logger } from '@nestjs/common';
+import { ProgressTracker } from '../utils/progress';
+import { applyRetention, formatRetentionStats } from '../utils/retention';
+import { LocalStorageAdapter } from '../../storage/adapters/local.adapter';
+import { S3StorageAdapter } from '../../storage/adapters/s3.adapter';
+import { CloudinaryStorageAdapter } from '../../storage/adapters/cloudinary.adapter';
+import { IStorageAdapter } from '../../storage/storage.interface';
 
 Logger.overrideLogger(false);
 
@@ -71,11 +77,26 @@ export async function backupCommand(options: BackupOptions): Promise<void> {
       }
     }
 
-    spinner.text = 'Starting backup...';
+    spinner.succeed('Configuration validated');
 
-    const result = await createBackupStandalone(mergedConfig);
+    const progress = new ProgressTracker();
+    let currentStage = 'Starting';
 
-    spinner.succeed('Backup completed successfully');
+    progress.start(100, 'Preparing backup');
+
+    const result = await createBackupStandalone(mergedConfig, {
+      onProgress: (bytes) => {
+        const mb = bytes / 1024 / 1024;
+        progress.update(Math.min(mb, 100), currentStage);
+      },
+      onStage: (stage) => {
+        currentStage = stage;
+      },
+    });
+
+    progress.stop('Backup complete');
+    console.log('');
+    logger.success('Backup completed successfully');
     logger.success(`Backup ID: ${result.backupId}`);
     logger.info(`Size: ${(result.size / 1024 / 1024).toFixed(2)} MB`);
     logger.info(`Duration: ${result.duration}ms`);
@@ -124,6 +145,68 @@ export async function backupCommand(options: BackupOptions): Promise<void> {
         logger.log(`  Download URL: ${result.downloadUrl}`);
       }
       logger.log(`  Console: https://console.cloudinary.com/console/${cloudName}/media_library`);
+    }
+
+    if (mergedConfig.backup?.retention?.enabled && mergedConfig.backup.retention.runAfterBackup) {
+      logger.info('\nRunning retention policy...');
+
+      let adapter: IStorageAdapter;
+      switch (mergedConfig.storage.provider) {
+        case 'local':
+          adapter = new LocalStorageAdapter(mergedConfig.storage.local?.path || './backups');
+          break;
+        case 's3':
+        case 'r2':
+          if (!mergedConfig.storage.s3?.accessKeyId || !mergedConfig.storage.s3?.secretAccessKey) {
+            logger.warn('Skipping retention: Storage credentials missing');
+            return;
+          }
+          adapter = new S3StorageAdapter({
+            endpoint: mergedConfig.storage.s3.endpoint,
+            bucket: mergedConfig.storage.s3.bucket || '',
+            region: mergedConfig.storage.s3.region,
+            accessKeyId: mergedConfig.storage.s3.accessKeyId,
+            secretAccessKey: mergedConfig.storage.s3.secretAccessKey,
+          });
+          break;
+        case 'cloudinary':
+          if (!mergedConfig.storage.cloudinary?.cloudName || !mergedConfig.storage.cloudinary?.apiKey || !mergedConfig.storage.cloudinary?.apiSecret) {
+            logger.warn('Skipping retention: Storage credentials missing');
+            return;
+          }
+          adapter = new CloudinaryStorageAdapter({
+            cloudName: mergedConfig.storage.cloudinary.cloudName,
+            apiKey: mergedConfig.storage.cloudinary.apiKey,
+            apiSecret: mergedConfig.storage.cloudinary.apiSecret,
+            folder: 'dbdock_backups',
+          });
+          break;
+        default:
+          logger.warn(`Skipping retention: Unknown storage provider ${mergedConfig.storage.provider}`);
+          return;
+      }
+
+      try {
+        const retentionStats = await applyRetention(
+          adapter,
+          mergedConfig.backup.retention,
+          mergedConfig.storage.provider,
+          false,
+        );
+
+        if (retentionStats.deletedBackups > 0) {
+          logger.success(`\nRetention cleanup completed:`);
+          logger.log(formatRetentionStats(retentionStats));
+        } else {
+          logger.info('No backups need to be deleted');
+        }
+
+        if (retentionStats.errors.length > 0) {
+          logger.warn(`\nRetention encountered ${retentionStats.errors.length} error(s)`);
+        }
+      } catch (err) {
+        logger.warn(`Retention policy failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   } catch (error) {
     spinner.fail('Backup failed');

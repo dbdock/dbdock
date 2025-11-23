@@ -40,10 +40,12 @@ export class CloudinaryStorageAdapter implements IStorageAdapter {
     options: UploadOptions,
   ): Promise<{ key: string; etag?: string }> {
     return new Promise((resolve, reject) => {
+      const publicId = options.key.replace(/^dbdock_backups\//, '');
+
       const uploadStream = cloudinary.uploader.upload_stream(
         {
           folder: this.folder,
-          public_id: options.key.replace(/\//g, '_'),
+          public_id: publicId,
           resource_type: 'raw',
           context: options.metadata,
         },
@@ -73,21 +75,27 @@ export class CloudinaryStorageAdapter implements IStorageAdapter {
   async downloadStream(options: DownloadOptions): Promise<Readable> {
     try {
       const { default: fetch } = await import('node-fetch');
+      const { PassThrough } = await import('stream');
 
       const url = cloudinary.url(options.key, {
         resource_type: 'raw',
         type: 'upload',
-        secure: true,
       });
 
-      this.logger.log(`Downloading from URL: ${url}`);
       const response = await fetch(url);
 
       if (!response.ok) {
         throw new Error(`Failed to download: ${response.statusText} (${response.status})`);
       }
 
-      return response.body as unknown as Readable;
+      if (!response.body) {
+        throw new Error('No response body received from Cloudinary');
+      }
+
+      const passThrough = new PassThrough();
+      response.body.pipe(passThrough);
+
+      return passThrough;
     } catch (error) {
       const friendlyMessage = this.getFriendlyError(error);
       this.logger.error(`Failed to download ${options.key}: ${friendlyMessage}`);
@@ -99,13 +107,20 @@ export class CloudinaryStorageAdapter implements IStorageAdapter {
 
   async listObjects(options?: ListOptions): Promise<StorageObject[]> {
     try {
+      const searchPrefix = options?.prefix ? `${this.folder}/${options.prefix}` : this.folder;
+
       const result = await cloudinary.api.resources({
         type: 'upload',
         resource_type: 'raw',
-        prefix: options?.prefix ? `${this.folder}/${options.prefix}` : this.folder,
+        prefix: searchPrefix,
         max_results: options?.maxKeys || 500,
         next_cursor: options?.startAfter,
       });
+
+      if (!result.resources || result.resources.length === 0) {
+        this.logger.warn(`No resources found with prefix: ${searchPrefix}`);
+        return [];
+      }
 
       return result.resources.map((resource: any) => ({
         key: resource.public_id,
@@ -139,13 +154,9 @@ export class CloudinaryStorageAdapter implements IStorageAdapter {
 
   async generatePresignedUrl(options: PresignedUrlOptions): Promise<string> {
     try {
-      const expiresAt = Math.floor(Date.now() / 1000) + (options.expiresIn || 3600);
-
       const url = cloudinary.url(options.key, {
         resource_type: 'raw',
-        type: 'authenticated',
-        sign_url: true,
-        expires_at: expiresAt,
+        type: 'upload',
       });
 
       return url;

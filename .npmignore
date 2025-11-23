@@ -32,6 +32,7 @@ Thumbs.db
 
 # Build artifacts
 *.tsbuildinfo
+dist/**/*.tsbuildinfo
 tsconfig.build.json
 
 # Development

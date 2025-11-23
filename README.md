@@ -1,180 +1,144 @@
 # DBDock
 
-Enterprise-grade PostgreSQL backup and restore in under 60 seconds.
+Enterprise-grade PostgreSQL backup and restore. Beautiful CLI with real-time progress tracking.
 
-[![npm version](https://img.shields.io/npm/v/dbdock.svg)](https://www.npmjs.com/package/dbdock)
+[![npm version](https://img.shields.io/npm/v/dbdock-cli.svg)](https://www.npmjs.com/package/dbdock-cli)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org)
 
 ## Quick Start
 
 ```bash
-npx dbdock init
-npx dbdock test
-npx dbdock backup
+npx dbdock init      # Interactive setup
+npx dbdock backup    # Create backup
+npx dbdock restore   # Restore backup
 ```
 
 ## Features
 
-- **CLI-First Design** - Interactive setup in under 60 seconds
-- **PostgreSQL Support** - Full backup with point-in-time recovery
-- **Multiple Storage Providers** - Local, AWS S3, Cloudflare R2, Cloudinary
-- **Security Built-In** - AES-256 encryption and Brotli compression
-- **Organized Storage** - All cloud backups stored in `dbdock_backups` folder
-- **Direct Download URLs** - Get instant download links for cloud backups
-- **Smart Error Messages** - Clear, actionable error guidance
+- **Beautiful CLI** - Real-time progress bars, speed tracking, smart filtering
+- **Multiple Storage** - Local, AWS S3, Cloudflare R2, Cloudinary
+- **Security** - AES-256 encryption, Brotli compression
+- **Retention Policies** - Automatic cleanup by count/age with safety nets
+- **Smart UX** - Intelligent filtering for 100+ backups, clear error messages
 - **Email Alerts** - SMTP notifications with custom templates
-- **Auto .gitignore** - Prevents credentials from being committed
 - **TypeScript Native** - Full type safety for programmatic usage
-- **Automated Schedules** - Cron-based backup automation
-- **Retention Policies** - Automatic cleanup of old backups
+- **Automation** - Cron schedules, auto-cleanup after backups
 
 ## Installation
 
 ```bash
-npm install dbdock
-```
-
-Or use without installation:
-
-```bash
+npm install -g dbdock-cli
+# or use directly with npx
 npx dbdock init
 ```
 
-## CLI Usage
+## CLI Commands
 
-### Initialize Configuration
+### `npx dbdock init`
 
-Create your configuration file with an interactive setup wizard:
+Interactive setup wizard that creates `dbdock.config.json` with:
+- Database connection (host, port, credentials)
+- Storage provider (Local, S3, R2, Cloudinary)
+- Encryption/compression settings
+- Email alerts (optional)
 
-```bash
-npx dbdock init
+Auto-adds config to `.gitignore` to protect credentials.
+
+### `npx dbdock backup`
+
+Creates database backup with real-time progress tracking:
+
 ```
-
-The wizard will guide you through:
-- Database connection details
-- Backup format selection (Custom, Plain SQL, Directory, Tar)
-- Storage provider selection (Local, S3, R2, Cloudinary)
-- Encryption and compression preferences
-- Email alert configuration with SMTP setup
-
-**Automatic .gitignore Setup:**
-- Config file (`dbdock.config.json`) automatically added to .gitignore
-- Local backup folder automatically ignored
-- Prevents accidental commit of sensitive credentials
-
-### Create Backup
-
-```bash
-npx dbdock backup
-```
-
-**Output includes:**
-- Backup ID and size
-- Encryption and compression status
-- Storage location details
-- **Direct download URL** for cloud backups
-- Console/dashboard links
-
-**Example Output:**
-```
+████████████████████ | 100% | 45.23/100 MB | Speed: 12.50 MB/s | ETA: 0s | Uploading to S3
 ✔ Backup completed successfully
-✓ Backup ID: 7b0524ad7b40b742c63c3e6298bef5d5
-ℹ Size: 0.19 MB
-ℹ Duration: 2216ms
-ℹ Encryption: enabled
-ℹ Compression: enabled (level 1)
-
-Storage Location:
-  Provider: Cloudinary
-  Cloud: your-cloud-name
-  Resource ID: dbdock_backups/backup-2025-11-22T17-37-18-474Z-abc123.sql
-  Download URL: https://res.cloudinary.com/your-cloud/raw/upload/dbdock_backups/backup-2025-11-22T17-37-18-474Z-abc123.sql
-  Console: https://console.cloudinary.com/console/your-cloud/media_library
 ```
 
-**Override settings with flags:**
+**Options:**
 ```bash
 npx dbdock backup --encrypt --compress --compression-level 9
 ```
 
-**Available Options:**
-- `--encrypt` / `--no-encrypt` - Enable or disable encryption
-- `--compress` / `--no-compress` - Enable or disable compression
-- `--encryption-key <key>` - 32-byte encryption key (64 hex characters)
-- `--compression-level <level>` - Compression level (1-11, default: 6)
+- `--encrypt` / `--no-encrypt` - Toggle encryption
+- `--compress` / `--no-compress` - Toggle compression
+- `--encryption-key <key>` - 64-char hex key (must be exactly 64 hexadecimal characters)
+- `--compression-level <1-11>` - Compression level (default: 6)
 
-### Restore Backup
+**Generate encryption key:**
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
 
-Select and restore from available backups:
+**Backup Formats:**
+- `custom` (default) - PostgreSQL custom binary format (.sql)
+- `plain` - Plain SQL text format (.sql)
+- `directory` - Directory format (.dir)
+- `tar` - Tar archive format (.tar)
+
+### `npx dbdock restore`
+
+Interactive restore with smart filtering and multi-step progress:
+
+```
+Progress:
+────────────────────────────────────────────────────────
+  ✔ Downloading backup
+  ✔ Decrypting data
+  ✔ Decompressing data
+  ⟳ Restoring to database...
+────────────────────────────────────────────────────────
+✔ All steps completed in 8.42s
+```
+
+**Smart filtering** (auto-enabled for 20+ backups):
+- Show recent (last 10)
+- Date range (24h, 7d, 30d, 90d, custom)
+- Search by keyword/ID
+
+Shows database stats and requires confirmation before restore.
+
+### `npx dbdock list`
+
+View backups with smart filtering:
 
 ```bash
-npx dbdock restore
+npx dbdock list                  # All backups
+npx dbdock list --recent 10      # Last 10
+npx dbdock list --search keyword # Search
+npx dbdock list --days 7         # Last 7 days
 ```
 
-**Features:**
-- Shows current database statistics before restore
-- Lists all available backups with size and date
-- Displays backup age (e.g., "2 days ago")
-- Requires confirmation before overwriting database
-- **Smart error messages** if backups not found
+**Auto-filtering** for 50+ backups with interactive prompts.
 
-**Example Flow:**
-```
-✔ Configuration loaded
-✔ Database analysis complete
+### `npx dbdock delete`
 
-Current Database Statistics:
-  Database: myapp
-  Tables: 15
-  Total Size: 45 MB
-  Estimated Rows: 125,430
-
-? Select backup to restore:
-  ❯ backup-2025-11-22T17-37-18-474Z-abc123.sql (0.19 MB) - 11/22/2025, 5:37:18 PM
-    backup-2025-11-21T14-20-10-123Z-def456.sql (0.18 MB) - 11/21/2025, 2:20:10 PM
-
-Selected Backup Details:
-  Backup: backup-2025-11-22T17-37-18-474Z-abc123.sql
-  Size: 0.19 MB
-  Created: 11/22/2025, 5:37:18 PM
-  Age: 2 hours ago
-
-? This will overwrite the current database. Continue? (y/N)
-```
-
-### Test Configuration
-
-Verify your database connection, storage, and email setup:
+Delete backups interactively or by key:
 
 ```bash
-npx dbdock test
+npx dbdock delete              # Interactive
+npx dbdock delete --key <id>   # Specific backup
+npx dbdock delete --all        # All (with confirmation)
 ```
 
-**Tests performed:**
-- PostgreSQL connection and authentication
-- Database access permissions
-- Storage provider credentials and permissions
-- **Email/SMTP configuration** (if enabled)
-- Network connectivity to services
+### `npx dbdock cleanup`
 
-**Example Output:**
-```
-✔ Configuration loaded
-✔ Database connection successful
-✔ Storage configuration valid
-✔ Email configuration valid
-
-All tests passed! Your configuration is ready to use.
-```
-
-### Manage Schedules
-
-View, add, or remove automated backup schedules:
+Clean up old backups based on retention policy:
 
 ```bash
-npx dbdock schedule
+npx dbdock cleanup              # Interactive with preview
+npx dbdock cleanup --dry-run    # Preview only
+npx dbdock cleanup --force      # Skip confirmation
 ```
+
+Shows detailed preview of what will be deleted and space to reclaim.
+
+### `npx dbdock test`
+
+Validates database, storage, and email configuration.
+
+### `npx dbdock schedule`
+
+Manage automated backup schedules.
 
 ## Configuration
 
@@ -207,7 +171,14 @@ After running `npx dbdock init`, a `dbdock.config.json` file is created:
     },
     "encryption": {
       "enabled": true,
-      "key": "your-32-character-encryption-key"
+      "key": "64-character-hex-key-generated-with-openssl-or-node-crypto"
+    },
+    "retention": {
+      "enabled": true,
+      "maxBackups": 100,
+      "maxAgeDays": 30,
+      "minBackups": 5,
+      "runAfterBackup": true
     }
   },
   "alerts": {
@@ -229,79 +200,14 @@ After running `npx dbdock init`, a `dbdock.config.json` file is created:
 }
 ```
 
-### Environment Variables
+### Storage Providers
 
-Override configuration values using environment variables:
-
-```bash
-export DBDOCK_DB_HOST=production.example.com
-export DBDOCK_DB_PASSWORD=prod-password
-export DBDOCK_S3_BUCKET=prod-backups
-npx dbdock backup
-```
-
-### Custom Config Path
-
-Specify a custom configuration file location:
-
-```bash
-export DBDOCK_CONFIG_PATH=/path/to/config.json
-npx dbdock backup
-```
-
-### Backup Format Options
-
-Choose your backup format based on your needs:
-
-| Format | Value | Description | Use Case |
-|--------|-------|-------------|----------|
-| **Custom** (recommended) | `custom` | Compressed binary format (pg_dump -Fc) | Best for most use cases. Supports selective restore and parallel restore. |
-| **Plain SQL** | `plain` | Plain text SQL statements | Human-readable, version control friendly, but larger file size. |
-| **Directory** | `directory` | Directory of files (pg_dump -Fd) | Best for very large databases. Enables parallel dump and restore. |
-| **Tar Archive** | `tar` | Tar archive format (pg_dump -Ft) | Similar to custom but as tar file. |
-
-Configure in `dbdock.config.json`:
-
+**Local:**
 ```json
-{
-  "backup": {
-    "format": "custom"
-  }
-}
+{ "storage": { "provider": "local", "local": { "path": "./backups" } } }
 ```
 
-**Note:** The `custom` format is recommended as it provides the best balance of compression, flexibility, and restore options.
-
-## Storage Providers
-
-All cloud backups are automatically organized in a `dbdock_backups` folder for easy management.
-
-### Local Storage
-
-Backups stored on your local filesystem.
-
-```json
-{
-  "storage": {
-    "provider": "local",
-    "local": {
-      "path": "./backups"
-    }
-  }
-}
-```
-
-**Folder structure:**
-```
-./backups/
-├── backup-2025-11-22T17-37-18-474Z-abc123.sql
-└── backup-2025-11-21T14-20-10-123Z-def456.sql
-```
-
-### AWS S3
-
-Store backups in Amazon S3 with automatic folder organization.
-
+**AWS S3:**
 ```json
 {
   "storage": {
@@ -309,47 +215,16 @@ Store backups in Amazon S3 with automatic folder organization.
     "s3": {
       "bucket": "my-backups",
       "region": "us-east-1",
-      "accessKeyId": "YOUR_ACCESS_KEY",
-      "secretAccessKey": "YOUR_SECRET_KEY"
+      "accessKeyId": "YOUR_KEY",
+      "secretAccessKey": "YOUR_SECRET"
     }
   }
 }
 ```
 
-**Folder structure:**
-```
-my-bucket/
-└── dbdock_backups/
-    ├── backup-2025-11-22T17-37-18-474Z-abc123.sql
-    └── backup-2025-11-21T14-20-10-123Z-def456.sql
-```
+Required permissions: `s3:PutObject`, `s3:GetObject`, `s3:ListBucket`, `s3:DeleteObject`
 
-**Required IAM permissions:**
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "s3:PutObject",
-        "s3:GetObject",
-        "s3:ListBucket",
-        "s3:DeleteObject"
-      ],
-      "Resource": [
-        "arn:aws:s3:::my-backups",
-        "arn:aws:s3:::my-backups/*"
-      ]
-    }
-  ]
-}
-```
-
-### Cloudflare R2
-
-S3-compatible storage with zero egress fees.
-
+**Cloudflare R2:**
 ```json
 {
   "storage": {
@@ -357,77 +232,76 @@ S3-compatible storage with zero egress fees.
     "s3": {
       "bucket": "my-backups",
       "region": "auto",
-      "endpoint": "https://YOUR_ACCOUNT_ID.r2.cloudflarestorage.com",
-      "accessKeyId": "YOUR_ACCESS_KEY",
-      "secretAccessKey": "YOUR_SECRET_KEY"
+      "endpoint": "https://ACCOUNT_ID.r2.cloudflarestorage.com",
+      "accessKeyId": "YOUR_KEY",
+      "secretAccessKey": "YOUR_SECRET"
     }
   }
 }
 ```
 
-**Folder structure:**
-```
-my-bucket/
-└── dbdock_backups/
-    ├── backup-2025-11-22T17-37-18-474Z-abc123.sql
-    └── backup-2025-11-21T14-20-10-123Z-def456.sql
-```
-
-### Cloudinary
-
-Media platform with generous free tier and automatic CDN distribution.
-
+**Cloudinary:**
 ```json
 {
   "storage": {
     "provider": "cloudinary",
     "cloudinary": {
-      "cloudName": "your-cloud-name",
-      "apiKey": "your-api-key",
-      "apiSecret": "your-api-secret"
+      "cloudName": "your-cloud",
+      "apiKey": "YOUR_KEY",
+      "apiSecret": "YOUR_SECRET"
     }
   }
 }
 ```
 
-**Folder structure in Cloudinary:**
-```
-dbdock_backups/
-├── backup-2025-11-22T17-37-18-474Z-abc123
-└── backup-2025-11-21T14-20-10-123Z-def456
+All cloud backups stored in `dbdock_backups/` folder with format: `backup-YYYY-MM-DD-HH-MM-SS-BACKUPID.sql`
+
+### Retention Policy
+
+Automatic cleanup to prevent storage bloat from frequent backups:
+
+```json
+{
+  "backup": {
+    "retention": {
+      "enabled": true,
+      "maxBackups": 100,
+      "maxAgeDays": 30,
+      "minBackups": 5,
+      "runAfterBackup": true
+    }
+  }
+}
 ```
 
-## Programmatic Usage
+**How it works:**
+- Keeps most recent `minBackups` (safety net, never deleted)
+- Deletes backups exceeding `maxBackups` limit (oldest first)
+- Deletes backups older than `maxAgeDays` (respecting minBackups)
+- Runs automatically after each backup (if `runAfterBackup: true`)
+- Manual cleanup: `npx dbdock cleanup`
 
-### NestJS Integration
+**Safety features:**
+- Always preserves `minBackups` most recent backups
+- Shows preview before deletion
+- Detailed logging of what was deleted
+- Error handling for failed deletions
+
+## Programmatic Usage (NestJS)
 
 ```typescript
 import { Module } from '@nestjs/common';
-import { DBDockModule } from 'dbdock';
+import { DBDockModule } from 'dbdock-cli';
 
 @Module({
   imports: [
     DBDockModule.forRoot({
-      database: {
-        type: 'postgres',
-        host: 'localhost',
-        port: 5432,
-        username: 'postgres',
-        password: process.env.DB_PASSWORD,
-        database: 'myapp',
-      },
-      storage: {
-        provider: 's3',
-        s3: {
-          bucket: 'my-backups',
-          region: 'us-east-1',
-          accessKeyId: process.env.AWS_ACCESS_KEY,
-          secretAccessKey: process.env.AWS_SECRET_KEY,
-        },
-      },
+      database: { /* connection config */ },
+      storage: { provider: 's3', s3: { /* S3 config */ } },
       backup: {
         compression: { enabled: true, level: 6 },
         encryption: { enabled: true, key: process.env.ENCRYPTION_KEY },
+        schedules: [{ name: 'Daily', cron: '0 2 * * *', enabled: true }]
       },
     }),
   ],
@@ -435,10 +309,8 @@ import { DBDockModule } from 'dbdock';
 export class AppModule {}
 ```
 
-### Create Backup
-
 ```typescript
-import { BackupService } from 'dbdock';
+import { BackupService } from 'dbdock-cli';
 
 @Injectable()
 export class MyService {
@@ -446,160 +318,10 @@ export class MyService {
 
   async createBackup() {
     const result = await this.backupService.createBackup();
-    console.log(`Backup ID: ${result.metadata.id}`);
-    console.log(`Size: ${result.metadata.size} bytes`);
   }
-}
-```
 
-### Restore Backup
-
-```typescript
-async restore() {
-  await this.backupService.restoreBackup('backup-id-here');
-}
-```
-
-### Schedule Backups
-
-```typescript
-DBDockModule.forRoot({
-  backup: {
-    schedules: [
-      {
-        name: 'Daily Backup',
-        cron: '0 2 * * *',
-        enabled: true,
-      },
-    ],
-  },
-})
-```
-
-## Advanced Features
-
-### Point-in-Time Recovery
-
-Enable continuous backup and restore to any point in time:
-
-```json
-{
-  "backup": {
-    "pitr": {
-      "enabled": true,
-      "walArchiveCommand": "dbdock wal-archive %p"
-    }
-  }
-}
-```
-
-Restore to specific timestamp:
-
-```typescript
-await backupService.restoreBackup('backup-id', {
-  targetTime: new Date('2024-01-15T14:30:00Z'),
-});
-```
-
-### Email Alerts
-
-Get notified when backups succeed or fail. Configure during setup with `npx dbdock init` or add manually to your config:
-
-```json
-{
-  "alerts": {
-    "email": {
-      "enabled": true,
-      "smtp": {
-        "host": "smtp.gmail.com",
-        "port": 587,
-        "secure": false,
-        "auth": {
-          "user": "your-email@gmail.com",
-          "pass": "your-app-password"
-        }
-      },
-      "from": "backups@yourapp.com",
-      "to": ["admin@yourapp.com", "devops@yourapp.com"]
-    }
-  }
-}
-```
-
-**Gmail Setup:**
-1. Enable 2-factor authentication
-2. Generate an app password at [Google Account Security](https://myaccount.google.com/security)
-3. Use the app password in the `pass` field
-
-**Custom Email Templates:**
-
-You can provide a custom email template path in your configuration:
-
-```json
-{
-  "alerts": {
-    "email": {
-      "enabled": true,
-      "customTemplate": "./email-templates/backup-notification.html",
-      "smtp": { ... }
-    }
-  }
-}
-```
-
-Create your custom template with placeholders:
-
-```html
-<!DOCTYPE html>
-<html>
-<head>
-  <style>
-    body { font-family: Arial, sans-serif; }
-    .success { color: green; }
-    .error { color: red; }
-  </style>
-</head>
-<body>
-  <h1>Backup {{status}}</h1>
-  <p>Backup ID: {{backupId}}</p>
-  <p>Database: {{database}}</p>
-  <p>Size: {{size}}</p>
-  <p>Duration: {{duration}}</p>
-  {{#if error}}
-  <p class="error">Error: {{error}}</p>
-  {{/if}}
-</body>
-</html>
-```
-
-Available template variables:
-- `{{status}}` - "Successful" or "Failed"
-- `{{backupId}}` - Unique backup identifier
-- `{{database}}` - Database name
-- `{{size}}` - Backup file size
-- `{{duration}}` - Time taken for backup
-- `{{timestamp}}` - When backup was created
-- `{{error}}` - Error message (only for failures)
-
-Test your email configuration:
-
-```bash
-npx dbdock test
-```
-
-### Retention Policies
-
-Automatically clean up old backups:
-
-```json
-{
-  "backup": {
-    "retention": {
-      "enabled": true,
-      "maxAge": 30,
-      "maxCount": 100,
-      "minCount": 5
-    }
+  async restore(backupId: string) {
+    await this.backupService.restoreBackup(backupId);
   }
 }
 ```
@@ -608,99 +330,79 @@ Automatically clean up old backups:
 
 - Node.js 18 or higher
 - PostgreSQL 12+
-- PostgreSQL client tools (pg_dump, psql)
+- PostgreSQL client tools (`pg_dump`, `pg_restore`, `psql`)
+
+**Installing PostgreSQL client tools:**
+```bash
+# macOS
+brew install postgresql
+
+# Ubuntu/Debian
+sudo apt-get install postgresql-client
+
+# Windows
+# Download from https://www.postgresql.org/download/windows/
+```
 
 ## Troubleshooting
 
-DBDock provides clear, actionable error messages to help you quickly resolve issues.
+Run `npx dbdock test` to verify your configuration.
 
 ### Common Issues
 
-**pg_dump command not found**
+**pg_dump not found:**
+```bash
+# macOS
+brew install postgresql
 
-Install PostgreSQL client tools:
-- **macOS:** `brew install postgresql`
-- **Ubuntu/Debian:** `sudo apt-get install postgresql-client`
-- **Windows:** Download from [PostgreSQL website](https://www.postgresql.org/download/windows/)
-
-**Database connection failed**
-
-DBDock will show specific errors:
-```
-✖ Backup failed
-Cannot connect to PostgreSQL server
-
-Connection details:
-  Host: localhost
-  Port: 5432
-
-Please verify:
-  • PostgreSQL server is running
-  • Host and port are correct in dbdock.config.json
-  • Network/firewall allows connection
-  • Test connection: psql -h localhost -p 5432 -U postgres -d myapp
+# Ubuntu/Debian
+sudo apt-get install postgresql-client
 ```
 
-Run `npx dbdock test` to verify all settings.
+**Database connection errors:**
+- Verify `host`, `port`, `username`, `password`, `database` in config
+- Test connection: `psql -h HOST -p PORT -U USERNAME -d DATABASE`
+- Check PostgreSQL server is running
+- Verify network/firewall allows connection
 
-**Authentication failed**
+**Storage errors:**
 
-```
-✖ Backup failed
-Authentication failed for user "postgres"
+*AWS S3:*
+- Verify credentials are correct
+- Ensure IAM user has permissions: `s3:PutObject`, `s3:GetObject`, `s3:ListBucket`, `s3:DeleteObject`
+- Check bucket name and region
 
-Please verify:
-  • Username is correct in dbdock.config.json
-  • Password is correct in dbdock.config.json
-  • User exists and has access to the database
-  • Test connection: psql -h localhost -p 5432 -U postgres -d myapp
-```
+*Cloudflare R2:*
+- Verify API token is correct
+- Check endpoint URL format: `https://ACCOUNT_ID.r2.cloudflarestorage.com`
+- Ensure bucket exists and is accessible
+- Verify R2 credentials have read/write permissions
 
-**No backups found during restore**
+*Cloudinary:*
+- Verify cloud name, API key, and secret are correct
+- Check your Cloudinary account is active
+- Ensure API credentials have media library access
 
-DBDock shows where to check:
-```
-✖ No backups found
+**Encryption key errors:**
+```bash
+# Generate a valid 64-character hex key
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
-Please verify:
-  • Backups exist in Cloudinary cloud: your-cloud-name
-  • Files are in folder: dbdock_backups
-  • Files are named: backup-*.sql
-  • Your API credentials are correct
-  • Check: https://console.cloudinary.com/console/your-cloud-name/media_library/folders/dbdock_backups
-
-To create a backup, run:
-  npx dbdock backup
-```
-
-**Storage access denied**
-
-For S3/R2, ensure IAM permissions:
-```json
-{
-  "Action": [
-    "s3:PutObject",
-    "s3:GetObject",
-    "s3:ListBucket",
-    "s3:DeleteObject"
-  ]
-}
+# Must be exactly 64 hexadecimal characters (0-9, a-f, A-F)
 ```
 
-For Cloudinary, verify API credentials have media library access.
+**R2 restore not working:**
+- Ensure backups are in `dbdock_backups/` folder
+- Verify backup files are named with `.sql` extension
+- Check endpoint configuration matches R2 account ID
 
-**Email/SMTP errors**
+**No backups found:**
+- Local: Check files exist in configured path
+- S3/R2: Verify files are in `dbdock_backups/` folder
+- Cloudinary: Check Media Library for `dbdock_backups` folder
+- Ensure files match pattern: `backup-*.sql`
 
-Run `npx dbdock test` to verify SMTP connection:
-```
-✖ Test failed
-SMTP authentication failed. Please check your username and password
-
-Common email issues:
-  • Verify cloud name, API key, and secret are correct
-  • Check your Cloudinary account is active
-  • Ensure API credentials have media library access
-```
+DBDock shows clear, actionable error messages for all issues with specific troubleshooting steps.
 
 ## License
 
@@ -708,10 +410,10 @@ MIT
 
 ## Support
 
-- [GitHub Issues](https://github.com/naheemolaide/dbdock/issues)
-- [GitHub Discussions](https://github.com/naheemolaide/dbdock/discussions)
+- [GitHub Issues](https://github.com/naheemolaide/dbdock-support/issues)
+- [GitHub Discussions](https://github.com/naheemolaide/dbdock-support/discussions)
 
 ## Links
 
-- [npm Package](https://www.npmjs.com/package/dbdock)
-- [GitHub Repository](https://github.com/naheemolaide/dbdock)
+- [npm Package](https://www.npmjs.com/package/dbdock-cli)
+- [GitHub Repository](https://github.com/naheemolaide/dbdock-support)

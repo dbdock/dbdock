@@ -1,12 +1,15 @@
 import inquirer from 'inquirer';
 import ora from 'ora';
-import { loadConfig } from '../utils/config';
+import { loadConfig, CLIConfig } from '../utils/config';
 import { logger } from '../utils/logger';
 import { LocalStorageAdapter } from '../../storage/adapters/local.adapter';
 import { S3StorageAdapter } from '../../storage/adapters/s3.adapter';
 import { R2StorageAdapter } from '../../storage/adapters/r2.adapter';
 import { CloudinaryStorageAdapter } from '../../storage/adapters/cloudinary.adapter';
-import { IStorageAdapter, StorageObject } from '../../storage/storage.interface';
+import {
+  IStorageAdapter,
+  StorageObject,
+} from '../../storage/storage.interface';
 import { spawn } from 'child_process';
 import { createBrotliDecompress } from 'zlib';
 import { createDecipheriv } from 'crypto';
@@ -15,8 +18,32 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { createWriteStream, unlinkSync, existsSync } from 'fs';
 import { Logger } from '@nestjs/common';
+import { MultiStepProgress } from '../utils/progress';
 
 Logger.overrideLogger(false);
+
+interface FilterOptionAnswer {
+  filterOption: 'recent' | 'date' | 'search' | 'all';
+}
+
+interface DateFilterAnswer {
+  dateFilter: number | 'custom';
+}
+
+interface StartDateAnswer {
+  startDate: string;
+}
+interface SearchTermAnswer {
+  searchTerm: string;
+}
+
+interface SelectedBackupAnswer {
+  selected: string;
+}
+
+interface ConfirmAnswer {
+  confirm: boolean;
+}
 
 export async function restoreCommand(): Promise<void> {
   const spinner = ora('Loading configuration...').start();
@@ -29,11 +56,16 @@ export async function restoreCommand(): Promise<void> {
 
     switch (config.storage.provider) {
       case 'local':
-        adapter = new LocalStorageAdapter(config.storage.local?.path || './backups');
+        adapter = new LocalStorageAdapter(
+          config.storage.local?.path || './backups',
+        );
         break;
 
       case 's3':
-        if (!config.storage.s3?.accessKeyId || !config.storage.s3?.secretAccessKey) {
+        if (
+          !config.storage.s3?.accessKeyId ||
+          !config.storage.s3?.secretAccessKey
+        ) {
           spinner.fail('S3 credentials are required');
           process.exit(1);
         }
@@ -45,22 +77,39 @@ export async function restoreCommand(): Promise<void> {
         });
         break;
 
-      case 'r2':
-        if (!config.storage.s3?.accessKeyId || !config.storage.s3?.secretAccessKey) {
+      case 'r2': {
+        if (
+          !config.storage.s3?.accessKeyId ||
+          !config.storage.s3?.secretAccessKey
+        ) {
           spinner.fail('R2 credentials are required');
           process.exit(1);
         }
-        adapter = new S3StorageAdapter({
-          endpoint: config.storage.s3.endpoint,
+        if (!config.storage.s3?.endpoint) {
+          spinner.fail('R2 endpoint is required');
+          process.exit(1);
+        }
+        const accountId =
+          config.storage.s3.endpoint.match(/https:\/\/([^.]+)/)?.[1];
+        if (!accountId) {
+          spinner.fail('Invalid R2 endpoint format');
+          process.exit(1);
+        }
+        adapter = new R2StorageAdapter({
+          accountId,
           bucket: config.storage.s3.bucket || '',
-          region: config.storage.s3.region || 'auto',
           accessKeyId: config.storage.s3.accessKeyId,
           secretAccessKey: config.storage.s3.secretAccessKey,
         });
         break;
+      }
 
       case 'cloudinary':
-        if (!config.storage.cloudinary?.cloudName || !config.storage.cloudinary?.apiKey || !config.storage.cloudinary?.apiSecret) {
+        if (
+          !config.storage.cloudinary?.cloudName ||
+          !config.storage.cloudinary?.apiKey ||
+          !config.storage.cloudinary?.apiSecret
+        ) {
           spinner.fail('Cloudinary credentials are required');
           process.exit(1);
         }
@@ -91,7 +140,17 @@ export async function restoreCommand(): Promise<void> {
 
       objects = await adapter.listObjects({ prefix });
       objects = objects
-        .filter(obj => obj.key.includes('backup-') && obj.key.endsWith('.sql'))
+        .filter((obj) => {
+          const key = obj.key.toLowerCase();
+          return (
+            key.includes('backup-') &&
+            (key.endsWith('.sql') ||
+              key.endsWith('.dump') ||
+              key.endsWith('.tar') ||
+              key.endsWith('.dir') ||
+              config.storage.provider === 'cloudinary')
+          );
+        })
         .sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime());
     } catch (err) {
       spinner.fail('Failed to list backups');
@@ -137,30 +196,32 @@ export async function restoreCommand(): Promise<void> {
         const localPath = config.storage.local?.path || './backups';
         logger.info('\nPlease verify:');
         logger.log(`  • Backup files exist in: ${localPath}`);
-        logger.log(`  • Files are named: backup-*.sql`);
+        logger.log(`  • Files are named: backup-*.dump or backup-*.sql`);
         logger.log(`  • You have read permissions on the directory`);
       } else if (config.storage.provider === 's3') {
         const bucket = config.storage.s3?.bucket || '';
         logger.info('\nPlease verify:');
         logger.log(`  • Backups exist in S3 bucket: ${bucket}`);
         logger.log(`  • Files are in folder: dbdock_backups/`);
-        logger.log(`  • Files are named: backup-*.sql`);
+        logger.log(`  • Files are named: backup-*.dump or backup-*.sql`);
         logger.log(`  • Your AWS credentials have s3:ListBucket permission`);
       } else if (config.storage.provider === 'r2') {
         const bucket = config.storage.s3?.bucket || '';
         logger.info('\nPlease verify:');
         logger.log(`  • Backups exist in R2 bucket: ${bucket}`);
         logger.log(`  • Files are in folder: dbdock_backups/`);
-        logger.log(`  • Files are named: backup-*.sql`);
+        logger.log(`  • Files are named: backup-*.dump or backup-*.sql`);
         logger.log(`  • Your R2 credentials have read permissions`);
       } else if (config.storage.provider === 'cloudinary') {
         const cloudName = config.storage.cloudinary?.cloudName || '';
         logger.info('\nPlease verify:');
         logger.log(`  • Backups exist in Cloudinary cloud: ${cloudName}`);
         logger.log(`  • Files are in folder: dbdock_backups`);
-        logger.log(`  • Files are named: backup-*.sql`);
+        logger.log(`  • Files are named: backup-*.dump or backup-*.sql`);
         logger.log(`  • Your API credentials are correct`);
-        logger.log(`  • Check: https://console.cloudinary.com/console/${cloudName}/media_library/folders/dbdock_backups`);
+        logger.log(
+          `  • Check: https://console.cloudinary.com/console/${cloudName}/media_library/folders/dbdock_backups`,
+        );
       }
 
       logger.info('\nTo create a backup, run:');
@@ -178,50 +239,181 @@ export async function restoreCommand(): Promise<void> {
     logger.log(`  Total Size: ${currentDbStats.size}`);
     logger.log(`  Estimated Rows: ${currentDbStats.rows}\n`);
 
-    const { selectedBackup } = await inquirer.prompt([
-      {
-        type: 'list',
-        name: 'selectedBackup',
-        message: 'Select backup to restore:',
-        choices: objects.map(obj => ({
-          name: `${obj.key} (${(obj.size / 1024 / 1024).toFixed(2)} MB) - ${obj.lastModified.toLocaleString()}`,
-          value: obj.key,
-        })),
-      },
-    ]);
+    let selectedBackup: string;
 
-    const selectedBackupObj = objects.find(obj => obj.key === selectedBackup);
+    if (objects.length > 20) {
+      logger.info(
+        `Found ${objects.length} backups. Let's filter them to find the right one.\n`,
+      );
+
+      const { filterOption } = (await inquirer.prompt([
+        {
+          type: 'list',
+          name: 'filterOption',
+          message: 'How would you like to find your backup?',
+          choices: [
+            { name: 'Show most recent backups (last 10)', value: 'recent' },
+            { name: 'Filter by date range', value: 'date' },
+            { name: 'Search by keyword/ID', value: 'search' },
+            {
+              name: 'Show all backups (not recommended for many backups)',
+              value: 'all',
+            },
+          ],
+        },
+      ])) as FilterOptionAnswer;
+
+      let filteredObjects = objects;
+
+      if (filterOption === 'recent') {
+        filteredObjects = objects.slice(0, 10);
+        logger.info(`\nShowing the 10 most recent backups:\n`);
+      } else if (filterOption === 'date') {
+        const { dateFilter } = (await inquirer.prompt([
+          {
+            type: 'list',
+            name: 'dateFilter',
+            message: 'Select time range:',
+            choices: [
+              { name: 'Last 24 hours', value: 1 },
+              { name: 'Last 7 days', value: 7 },
+              { name: 'Last 30 days', value: 30 },
+              { name: 'Last 90 days', value: 90 },
+              { name: 'Custom date range', value: 'custom' },
+            ],
+          },
+        ])) as DateFilterAnswer;
+
+        if (dateFilter === 'custom') {
+          const { startDate } = (await inquirer.prompt([
+            {
+              type: 'input',
+              name: 'startDate',
+              message: 'Enter start date (YYYY-MM-DD):',
+              validate: (input: string) => {
+                const date = new Date(input);
+                return !isNaN(date.getTime()) || 'Please enter a valid date';
+              },
+            },
+          ])) as StartDateAnswer;
+
+          const cutoffDate = new Date(startDate);
+          filteredObjects = objects.filter(
+            (obj) => obj.lastModified >= cutoffDate,
+          );
+        } else if (typeof dateFilter === 'number') {
+          const cutoffDate = new Date();
+          cutoffDate.setDate(cutoffDate.getDate() - dateFilter);
+          filteredObjects = objects.filter(
+            (obj) => obj.lastModified >= cutoffDate,
+          );
+        }
+
+        logger.info(
+          `\nFound ${filteredObjects.length} backup(s) in this time range:\n`,
+        );
+      } else if (filterOption === 'search') {
+        const { searchTerm } = (await inquirer.prompt([
+          {
+            type: 'input',
+            name: 'searchTerm',
+            message: 'Enter search term (backup ID, date, etc.):',
+          },
+        ])) as SearchTermAnswer;
+
+        filteredObjects = objects.filter((obj) =>
+          obj.key.toLowerCase().includes(searchTerm.toLowerCase()),
+        );
+
+        logger.info(
+          `\nFound ${filteredObjects.length} backup(s) matching "${searchTerm}":\n`,
+        );
+      }
+
+      if (filteredObjects.length === 0) {
+        logger.error('No backups found matching your criteria');
+        process.exit(1);
+      }
+
+      const { selected } = (await inquirer.prompt([
+        {
+          type: 'list',
+          name: 'selected',
+          message: `Select backup to restore (${filteredObjects.length} shown):`,
+          pageSize: 15,
+          choices: filteredObjects.map((obj) => ({
+            name: `${obj.key.replace('dbdock_backups/', '')} (${(obj.size / 1024 / 1024).toFixed(2)} MB) - ${obj.lastModified.toLocaleString()} - ${getTimeAgo(obj.lastModified)}`,
+            value: obj.key,
+          })),
+        },
+      ])) as SelectedBackupAnswer;
+
+      selectedBackup = selected;
+    } else {
+      const { selected } = (await inquirer.prompt([
+        {
+          type: 'list',
+          name: 'selected',
+          message: 'Select backup to restore:',
+          pageSize: 15,
+          choices: objects.map((obj) => ({
+            name: `${obj.key.replace('dbdock_backups/', '')} (${(obj.size / 1024 / 1024).toFixed(2)} MB) - ${obj.lastModified.toLocaleString()} - ${getTimeAgo(obj.lastModified)}`,
+            value: obj.key,
+          })),
+        },
+      ])) as SelectedBackupAnswer;
+
+      selectedBackup = selected;
+    }
+
+    const selectedBackupObj = objects.find((obj) => obj.key === selectedBackup);
     if (selectedBackupObj) {
       logger.info('\nSelected Backup Details:');
       logger.log(`  Backup: ${selectedBackup}`);
-      logger.log(`  Size: ${(selectedBackupObj.size / 1024 / 1024).toFixed(2)} MB`);
-      logger.log(`  Created: ${selectedBackupObj.lastModified.toLocaleString()}`);
+      logger.log(
+        `  Size: ${(selectedBackupObj.size / 1024 / 1024).toFixed(2)} MB`,
+      );
+      logger.log(
+        `  Created: ${selectedBackupObj.lastModified.toLocaleString()}`,
+      );
       logger.log(`  Age: ${getTimeAgo(selectedBackupObj.lastModified)}\n`);
     }
 
-    const { confirm } = await inquirer.prompt([
+    const { confirm } = (await inquirer.prompt([
       {
         type: 'confirm',
         name: 'confirm',
         message: 'This will overwrite the current database. Continue?',
         default: false,
       },
-    ]);
+    ])) as ConfirmAnswer;
 
     if (!confirm) {
       logger.warn('Restore cancelled');
       return;
     }
 
-    spinner.start('Restoring backup...');
+    const restoreSteps = new MultiStepProgress([
+      'Downloading backup',
+      'Decrypting data',
+      'Decompressing data',
+      'Restoring to database',
+    ]);
+
+    restoreSteps.start();
 
     const dbConfig = config.database;
     const pgRestoreArgs = [
-      '-h', dbConfig.host || 'localhost',
-      '-p', String(dbConfig.port || 5432),
-      '-U', dbConfig.username || 'postgres',
-      '-d', dbConfig.database || 'postgres',
-      '-F', 'c',
+      '-h',
+      dbConfig.host || 'localhost',
+      '-p',
+      String(dbConfig.port || 5432),
+      '-U',
+      dbConfig.username || 'postgres',
+      '-d',
+      dbConfig.database || 'postgres',
+      '-F',
+      'c',
       '--clean',
       '--no-password',
     ];
@@ -231,7 +423,6 @@ export async function restoreCommand(): Promise<void> {
       PGPASSWORD: dbConfig.password,
     };
 
-    spinner.start('Downloading backup...');
     let stream: Readable | Transform;
     let tempFilePath: string | null = null;
 
@@ -241,8 +432,17 @@ export async function restoreCommand(): Promise<void> {
         stream = await localAdapter.downloadStream({ key: selectedBackup });
       } else {
         tempFilePath = join(tmpdir(), `dbdock-restore-${Date.now()}.sql`);
-        const downloadStream = await adapter.downloadStream({ key: selectedBackup });
+        const downloadStream = await adapter.downloadStream({
+          key: selectedBackup,
+        });
         const tempWriteStream = createWriteStream(tempFilePath);
+
+        let downloadedBytes = 0;
+        downloadStream.on('data', (chunk: Buffer) => {
+          downloadedBytes += chunk.length;
+          const mb = (downloadedBytes / 1024 / 1024).toFixed(2);
+          restoreSteps.nextStep(`${mb} MB downloaded`);
+        });
 
         await new Promise<void>((resolve, reject) => {
           downloadStream.pipe(tempWriteStream);
@@ -254,9 +454,10 @@ export async function restoreCommand(): Promise<void> {
         const { createReadStream } = await import('fs');
         stream = createReadStream(tempFilePath);
       }
+
+      restoreSteps.nextStep();
     } catch (err) {
-      spinner.fail('Failed to download backup');
-      logger.error(err instanceof Error ? err.message : String(err));
+      restoreSteps.fail(err instanceof Error ? err.message : String(err));
       if (tempFilePath && existsSync(tempFilePath)) {
         unlinkSync(tempFilePath);
       }
@@ -264,8 +465,7 @@ export async function restoreCommand(): Promise<void> {
     }
 
     stream.on('error', (err) => {
-      spinner.fail('Failed to read backup file');
-      logger.error(err.message);
+      restoreSteps.fail(`Failed to read backup file: ${err.message}`);
       if (tempFilePath && existsSync(tempFilePath)) {
         unlinkSync(tempFilePath);
       }
@@ -273,21 +473,40 @@ export async function restoreCommand(): Promise<void> {
     });
 
     if (config.backup?.encryption?.enabled && config.backup.encryption.key) {
+      const keyBuffer = Buffer.from(config.backup.encryption.key, 'hex');
+
+      if (keyBuffer.length !== 32) {
+        restoreSteps.fail(
+          `Invalid encryption key length: ${keyBuffer.length} bytes (expected 32 bytes)`,
+        );
+        logger.error(
+          `\nYour key: "${config.backup.encryption.key}" (${config.backup.encryption.key.length} characters)\n\n` +
+            `Please fix:\n` +
+            `  • Encryption key must be exactly 64 hexadecimal characters (32 bytes)\n` +
+            `  • Generate a valid key: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"\n` +
+            `  • Update the "backup.encryption.key" in your dbdock.config.json`,
+        );
+        if (tempFilePath && existsSync(tempFilePath)) {
+          unlinkSync(tempFilePath);
+        }
+        process.exit(1);
+      }
+
       const iv = Buffer.alloc(16);
-      const decipher = createDecipheriv(
-        'aes-256-cbc',
-        Buffer.from(config.backup.encryption.key),
-        iv,
-      );
+      const decipher = createDecipheriv('aes-256-cbc', keyBuffer, iv);
       stream = stream.pipe(decipher);
+      restoreSteps.nextStep();
+    } else {
+      restoreSteps.nextStep();
     }
 
     if (config.backup?.compression?.enabled) {
       const decompressStream = createBrotliDecompress();
       stream = stream.pipe(decompressStream);
+      restoreSteps.nextStep();
+    } else {
+      restoreSteps.nextStep();
     }
-
-    spinner.start('Restoring to database...');
     const pgRestoreProcess = spawn('pg_restore', pgRestoreArgs, { env });
 
     stream.pipe(pgRestoreProcess.stdin);
@@ -303,7 +522,11 @@ export async function restoreCommand(): Promise<void> {
         if (code === 0) {
           resolve();
         } else {
-          reject(new Error(`pg_restore exited with code ${code}${errorOutput ? ': ' + errorOutput : ''}`));
+          reject(
+            new Error(
+              `pg_restore exited with code ${code}${errorOutput ? ': ' + errorOutput : ''}`,
+            ),
+          );
         }
       });
       pgRestoreProcess.on('error', (err) => {
@@ -312,18 +535,18 @@ export async function restoreCommand(): Promise<void> {
         }
         reject(new Error(`Failed to execute pg_restore: ${err.message}`));
       });
-      pgRestoreProcess.stderr.on('data', (data) => {
+      pgRestoreProcess.stderr.on('data', (data: Buffer) => {
         const message = data.toString();
         if (!message.includes('NOTICE') && !message.includes('WARNING')) {
           errorOutput += message;
-          console.error('pg_restore:', message.trim());
         }
       });
     });
 
-    spinner.succeed('Restore completed successfully');
+    restoreSteps.complete();
+    logger.success('Restore completed successfully');
   } catch (error) {
-    spinner.fail('Restore failed');
+    logger.error('\n✖ Restore failed');
     logger.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
@@ -336,7 +559,9 @@ interface DatabaseStats {
   rows: string;
 }
 
-async function getCurrentDatabaseStats(config: any): Promise<DatabaseStats> {
+async function getCurrentDatabaseStats(
+  config: CLIConfig,
+): Promise<DatabaseStats> {
   const dbConfig = config.database;
 
   const queries = [
@@ -346,10 +571,14 @@ async function getCurrentDatabaseStats(config: any): Promise<DatabaseStats> {
   ];
 
   const psqlArgs = [
-    '-h', dbConfig.host || 'localhost',
-    '-p', String(dbConfig.port || 5432),
-    '-U', dbConfig.username || 'postgres',
-    '-d', dbConfig.database || 'postgres',
+    '-h',
+    dbConfig.host || 'localhost',
+    '-p',
+    String(dbConfig.port || 5432),
+    '-U',
+    dbConfig.username || 'postgres',
+    '-d',
+    dbConfig.database || 'postgres',
     '-t',
     '--no-password',
   ];
@@ -360,31 +589,36 @@ async function getCurrentDatabaseStats(config: any): Promise<DatabaseStats> {
   };
 
   const results = await Promise.all(
-    queries.map(query =>
-      new Promise<string>((resolve, reject) => {
-        const psqlProcess = spawn('psql', [...psqlArgs, '-c', query], { env });
-        let output = '';
-        let errorOutput = '';
+    queries.map(
+      (query) =>
+        new Promise<string>((resolve, reject) => {
+          const psqlProcess = spawn('psql', [...psqlArgs, '-c', query], {
+            env,
+          });
+          let output = '';
+          let errorOutput = '';
 
-        psqlProcess.stdout.on('data', (data) => {
-          output += data.toString();
-        });
+          psqlProcess.stdout.on('data', (data: Buffer) => {
+            output += data.toString();
+          });
 
-        psqlProcess.stderr.on('data', (data) => {
-          errorOutput += data.toString();
-        });
+          psqlProcess.stderr.on('data', (data: Buffer) => {
+            errorOutput += data.toString();
+          });
 
-        psqlProcess.on('close', (code) => {
-          if (code === 0) {
-            resolve(output.trim());
-          } else {
-            reject(new Error(errorOutput || `Query failed with code ${code}`));
-          }
-        });
+          psqlProcess.on('close', (code) => {
+            if (code === 0) {
+              resolve(output.trim());
+            } else {
+              reject(
+                new Error(errorOutput || `Query failed with code ${code}`),
+              );
+            }
+          });
 
-        psqlProcess.on('error', reject);
-      })
-    )
+          psqlProcess.on('error', reject);
+        }),
+    ),
   );
 
   return {

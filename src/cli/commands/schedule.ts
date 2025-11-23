@@ -111,7 +111,8 @@ async function addSchedule(config: any): Promise<void> {
   saveConfig(config);
 
   logger.success('Schedule added successfully');
-  logger.info('Note: Schedules require the DBDock service to be running');
+  logger.info('\nNote: Schedules require the DBDock service to be running');
+  logger.info('Scheduled backups will send email alerts if configured in dbdock.config.json');
 }
 
 async function removeSchedule(config: any): Promise<void> {

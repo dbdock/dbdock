@@ -136,17 +136,19 @@ export class LocalStorageAdapter implements IStorageAdapter {
 
     const objects: StorageObject[] = [];
 
-    const searchPath = prefix
-      ? path.join(this.basePath, prefix)
-      : this.basePath;
-
-    if (!fs.existsSync(searchPath)) {
+    if (!fs.existsSync(this.basePath)) {
       return [];
     }
 
-    await this.walkDirectory(searchPath, objects, this.basePath, maxKeys);
+    await this.walkDirectory(this.basePath, objects, this.basePath, maxKeys);
 
-    return objects
+    let filteredObjects = objects;
+
+    if (prefix) {
+      filteredObjects = objects.filter((obj) => obj.key.includes(prefix));
+    }
+
+    return filteredObjects
       .filter((obj) => obj.key > startAfter)
       .sort((a, b) => a.key.localeCompare(b.key))
       .slice(0, maxKeys);

@@ -6,6 +6,9 @@ import { backupCommand } from './commands/backup';
 import { restoreCommand } from './commands/restore';
 import { testCommand } from './commands/test';
 import { scheduleCommand } from './commands/schedule';
+import { listCommand } from './commands/list';
+import { deleteCommand } from './commands/delete';
+import { cleanupCommand } from './commands/cleanup';
 
 process.on('SIGINT', () => {
   console.log('\n\nOperation cancelled by user');
@@ -54,5 +57,28 @@ program
   .command('schedule')
   .description('Manage backup schedules')
   .action(scheduleCommand);
+
+program
+  .command('list')
+  .description('List all available backups')
+  .option('--recent <number>', 'Show most recent N backups', parseInt)
+  .option('--search <keyword>', 'Search backups by keyword')
+  .option('--days <number>', 'Show backups from last N days', parseInt)
+  .option('--limit <number>', 'Limit number of results', parseInt)
+  .action(listCommand);
+
+program
+  .command('delete')
+  .description('Delete backup(s)')
+  .option('--all', 'Delete all backups')
+  .option('--key <key>', 'Delete specific backup by key')
+  .action(deleteCommand);
+
+program
+  .command('cleanup')
+  .description('Clean up old backups based on retention policy')
+  .option('--dry-run', 'Preview what will be deleted without deleting')
+  .option('--force', 'Delete without confirmation')
+  .action(cleanupCommand);
 
 program.parse();

@@ -45,6 +45,13 @@ export interface CLIConfig {
       enabled: boolean;
       key?: string;
     };
+    retention?: {
+      enabled: boolean;
+      maxBackups?: number;
+      maxAgeDays?: number;
+      minBackups?: number;
+      runAfterBackup?: boolean;
+    };
     schedules?: Array<{
       name: string;
       cron: string;
