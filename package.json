@@ -44,7 +44,7 @@
   "bugs": {
     "url": "https://github.com/naheemolaide/dbdock-support/issues"
   },
-  "homepage": "https://github.com/naheemolaide/dbdock-support#readme",
+  "homepage": "https://dbdock.mintlify.app",
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=8.0.0"

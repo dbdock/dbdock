@@ -2,9 +2,12 @@
 
 Enterprise-grade PostgreSQL backup and restore. Beautiful CLI with real-time progress tracking.
 
-[![npm version](https://img.shields.io/npm/v/dbdock-cli.svg)](https://www.npmjs.com/package/dbdock-cli)
+[![npm version](https://img.shields.io/npm/v/dbdock.svg)](https://www.npmjs.com/package/dbdock)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org)
+[![Documentation](https://img.shields.io/badge/docs-dbdock.mintlify.app-blue)](https://dbdock.mintlify.app)
+
+📚 **[Full Documentation](https://dbdock.mintlify.app)** | 💬 **[Discussions](https://github.com/naheemolaide/dbdock-support/discussions)** | 🐛 **[Issues](https://github.com/naheemolaide/dbdock-support/issues)**
 
 ## Quick Start
 
@@ -28,7 +31,7 @@ npx dbdock restore   # Restore backup
 ## Installation
 
 ```bash
-npm install -g dbdock-cli
+npm install -g dbdock
 # or use directly with npx
 npx dbdock init
 ```
@@ -138,7 +141,52 @@ Validates database, storage, and email configuration.
 
 ### `npx dbdock schedule`
 
-Manage automated backup schedules.
+Interactive schedule management for automated backups:
+
+```bash
+npx dbdock schedule
+```
+
+**Features:**
+- View current schedules
+- Add new schedule with cron expression
+- Remove existing schedules
+- Built-in presets (hourly, daily, weekly, monthly)
+
+**Schedule Presets:**
+- Every hour: `0 * * * *`
+- Every day at midnight: `0 0 * * *`
+- Every day at 2 AM: `0 2 * * *`
+- Every week (Sunday): `0 0 * * 0`
+- Every month (1st): `0 0 1 * *`
+- Custom cron expression
+
+**Important Notes:**
+- Schedules are saved to `dbdock.config.json`
+- Requires DBDock NestJS service running to execute scheduled backups
+- CLI schedules are for configuration only - use programmatic mode for execution
+- Scheduled backups will send email alerts if configured
+- Manual `npx dbdock backup` does NOT use schedules
+
+**Example Schedule Configuration:**
+```json
+{
+  "backup": {
+    "schedules": [
+      {
+        "name": "Daily Backup",
+        "cron": "0 2 * * *",
+        "enabled": true
+      },
+      {
+        "name": "Weekly Full Backup",
+        "cron": "0 0 * * 0",
+        "enabled": true
+      }
+    ]
+  }
+}
+```
 
 ## Configuration
 
@@ -291,7 +339,7 @@ Automatic cleanup to prevent storage bloat from frequent backups:
 
 ```typescript
 import { Module } from '@nestjs/common';
-import { DBDockModule } from 'dbdock-cli';
+import { DBDockModule } from 'dbdock';
 
 @Module({
   imports: [
@@ -310,7 +358,7 @@ export class AppModule {}
 ```
 
 ```typescript
-import { BackupService } from 'dbdock-cli';
+import { BackupService } from 'dbdock';
 
 @Injectable()
 export class MyService {
@@ -404,16 +452,21 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 DBDock shows clear, actionable error messages for all issues with specific troubleshooting steps.
 
-## License
+## Documentation
 
-MIT
+📚 **[Full Documentation](https://dbdock.mintlify.app)** - Comprehensive guides, API reference, and examples
 
 ## Support
 
-- [GitHub Issues](https://github.com/naheemolaide/dbdock-support/issues)
-- [GitHub Discussions](https://github.com/naheemolaide/dbdock-support/discussions)
+- 💬 **[Discussions](https://github.com/naheemolaide/dbdock-support/discussions)** - Ask questions and share ideas
+- 🐛 **[Issues](https://github.com/naheemolaide/dbdock-support/issues)** - Report bugs and request features
 
 ## Links
 
-- [npm Package](https://www.npmjs.com/package/dbdock-cli)
-- [GitHub Repository](https://github.com/naheemolaide/dbdock-support)
+- 📦 **[npm Package](https://www.npmjs.com/package/dbdock)**
+- 📖 **[Documentation](https://dbdock.mintlify.app)**
+- 💻 **[GitHub Repository](https://github.com/naheemolaide/dbdock-support)**
+
+## License
+
+MIT
