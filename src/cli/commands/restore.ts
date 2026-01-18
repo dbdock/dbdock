@@ -366,6 +366,20 @@ export async function restoreCommand(): Promise<void> {
       selectedBackup = selected;
     }
 
+interface RestoreTargetAnswer {
+  target: 'current' | 'new';
+}
+
+interface MigrationDetailsAnswer {
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  database: string;
+}
+
+// ... existing interfaces ...
+
     const selectedBackupObj = objects.find((obj) => obj.key === selectedBackup);
     if (selectedBackupObj) {
       logger.info('\nSelected Backup Details:');
@@ -379,11 +393,66 @@ export async function restoreCommand(): Promise<void> {
       logger.log(`  Age: ${getTimeAgo(selectedBackupObj.lastModified)}\n`);
     }
 
+    const { target } = (await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'target',
+        message: 'Where would you like to restore this backup?',
+        choices: [
+          { name: 'Current Database (Overwrite)', value: 'current' },
+          { name: 'New Database Instance (Migrate)', value: 'new' },
+        ],
+        default: 'current',
+      },
+    ])) as RestoreTargetAnswer;
+
+    let targetDbConfig = config.database;
+
+    if (target === 'new') {
+      const migrationDetails = (await inquirer.prompt([
+        {
+          type: 'input',
+          name: 'host',
+          message: 'Target Host:',
+          default: 'localhost',
+        },
+        {
+          type: 'number',
+          name: 'port',
+          message: 'Target Port:',
+          default: 5432,
+        },
+        {
+          type: 'input',
+          name: 'username',
+          message: 'Target Username:',
+          default: 'postgres',
+        },
+        {
+          type: 'password',
+          name: 'password',
+          message: 'Target Password:',
+        },
+        {
+          type: 'input',
+          name: 'database',
+          message: 'Target Database Name:',
+        },
+      ])) as MigrationDetailsAnswer;
+
+      targetDbConfig = {
+        type: 'postgres',
+        ...migrationDetails,
+      };
+    }
+
     const { confirm } = (await inquirer.prompt([
       {
         type: 'confirm',
         name: 'confirm',
-        message: 'This will overwrite the current database. Continue?',
+        message: target === 'new' 
+          ? `This will restore to ${targetDbConfig.host}:${targetDbConfig.port}/${targetDbConfig.database}. Continue?`
+          : 'This will overwrite the current database. Continue?',
         default: false,
       },
     ])) as ConfirmAnswer;
@@ -402,25 +471,27 @@ export async function restoreCommand(): Promise<void> {
 
     restoreSteps.start();
 
-    const dbConfig = config.database;
     const pgRestoreArgs = [
       '-h',
-      dbConfig.host || 'localhost',
+      targetDbConfig.host || 'localhost',
       '-p',
-      String(dbConfig.port || 5432),
+      String(targetDbConfig.port || 5432),
       '-U',
-      dbConfig.username || 'postgres',
+      targetDbConfig.username || 'postgres',
       '-d',
-      dbConfig.database || 'postgres',
+      targetDbConfig.database || 'postgres',
       '-F',
       'c',
       '--clean',
+      '--if-exists',
+      '--no-owner',
+      '--no-acl',
       '--no-password',
     ];
 
     const env = {
       ...process.env,
-      PGPASSWORD: dbConfig.password,
+      PGPASSWORD: targetDbConfig.password,
     };
 
     let stream: Readable | Transform;
@@ -511,17 +582,43 @@ export async function restoreCommand(): Promise<void> {
 
     stream.pipe(pgRestoreProcess.stdin);
 
+    const ignoredPatterns = [
+      'NOTICE',
+      'WARNING',
+      'transaction_timeout',
+      'errors ignored on restore',
+      'unrecognized configuration parameter',
+      'already exists',
+      'does not exist',
+      'no privileges could be revoked',
+      'no privileges were granted',
+      'role .* does not exist',
+      'extension .* already exists',
+      'schema .* already exists',
+      'procedural language .* already exists',
+    ];
+
+    const shouldIgnoreError = (message: string): boolean => {
+      return ignoredPatterns.some((pattern) =>
+        message.toLowerCase().includes(pattern.toLowerCase()),
+      );
+    };
+
     await new Promise<void>((resolve, reject) => {
       let errorOutput = '';
+      let hasWarnings = false;
 
       pgRestoreProcess.on('close', (code) => {
         if (tempFilePath && existsSync(tempFilePath)) {
           unlinkSync(tempFilePath);
         }
 
-        if (code === 0) {
+        if (code === 0 || (code === 1 && !errorOutput && hasWarnings)) {
           resolve();
-        } else {
+        } else if (code === 1 && errorOutput) {
+          const friendlyError = parsePgRestoreError(errorOutput);
+          reject(new Error(friendlyError));
+        } else if (code !== 0) {
           reject(
             new Error(
               `pg_restore exited with code ${code}${errorOutput ? ': ' + errorOutput : ''}`,
@@ -537,7 +634,9 @@ export async function restoreCommand(): Promise<void> {
       });
       pgRestoreProcess.stderr.on('data', (data: Buffer) => {
         const message = data.toString();
-        if (!message.includes('NOTICE') && !message.includes('WARNING')) {
+        if (shouldIgnoreError(message)) {
+          hasWarnings = true;
+        } else if (message.trim()) {
           errorOutput += message;
         }
       });
@@ -545,12 +644,26 @@ export async function restoreCommand(): Promise<void> {
 
     restoreSteps.complete();
     logger.success('Restore completed successfully');
+
+    if (target === 'new') {
+      logger.info('\n🚀 Migration Successful! New Database Details:');
+      logger.log('────────────────────────────────────────────────────────');
+      logger.log(`  Host:      ${targetDbConfig.host}`);
+      logger.log(`  Port:      ${targetDbConfig.port}`);
+      logger.log(`  Database:  ${targetDbConfig.database}`);
+      logger.log(`  Username:  ${targetDbConfig.username}`);
+      logger.log(`  Password:  ${targetDbConfig.password}`);
+      logger.log('────────────────────────────────────────────────────────');
+      logger.info('You can now connect to your new database instance.\n');
+    }
   } catch (error) {
-    logger.error('\n✖ Restore failed');
-    logger.error(error instanceof Error ? error.message : String(error));
+    spinner.stop();
+    logger.error(`Restore failed: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);
   }
 }
+
+
 
 interface DatabaseStats {
   name: string;
@@ -627,6 +740,71 @@ async function getCurrentDatabaseStats(
     size: results[1] || 'Unknown',
     rows: results[2] ? parseInt(results[2]).toLocaleString() : '0',
   };
+}
+
+function parsePgRestoreError(errorOutput: string): string {
+  const lowerError = errorOutput.toLowerCase();
+
+  if (lowerError.includes('authentication failed')) {
+    return (
+      'Database authentication failed\n\n' +
+      'Please verify:\n' +
+      '  • Database password is correct in dbdock.config.json\n' +
+      '  • Database user has necessary permissions\n' +
+      '  • Database host and port are accessible'
+    );
+  }
+
+  if (lowerError.includes('connection refused') || lowerError.includes('could not connect')) {
+    return (
+      'Failed to connect to database\n\n' +
+      'Please verify:\n' +
+      '  • Database server is running\n' +
+      '  • Host and port are correct in dbdock.config.json\n' +
+      '  • Firewall allows connection to database port\n' +
+      '  • Database accepts connections from your IP'
+    );
+  }
+
+  if (lowerError.includes('permission denied')) {
+    return (
+      'Database permission denied\n\n' +
+      'Please verify:\n' +
+      '  • Database user has CREATE/DROP privileges\n' +
+      '  • User has permission to restore to this database\n' +
+      '  • Try using a superuser account for restore'
+    );
+  }
+
+  if (lowerError.includes('database') && lowerError.includes('does not exist')) {
+    return (
+      'Target database does not exist\n\n' +
+      'Please:\n' +
+      '  • Create the database first, or\n' +
+      '  • Update database name in dbdock.config.json'
+    );
+  }
+
+  if (lowerError.includes('disk full') || lowerError.includes('no space left')) {
+    return (
+      'Insufficient disk space\n\n' +
+      'Please:\n' +
+      '  • Free up disk space on database server\n' +
+      '  • Check available storage before restoring'
+    );
+  }
+
+  if (lowerError.includes('corrupted') || lowerError.includes('invalid backup')) {
+    return (
+      'Backup file appears to be corrupted\n\n' +
+      'Please:\n' +
+      '  • Try a different backup file\n' +
+      '  • Verify backup was created successfully\n' +
+      '  • Check encryption key matches if encryption is enabled'
+    );
+  }
+
+  return `Database restore error:\n\n${errorOutput.trim()}\n\nIf you need help, please check the documentation or report this issue.`;
 }
 
 function getTimeAgo(date: Date): string {

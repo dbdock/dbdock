@@ -74,6 +74,10 @@ export interface CLIConfig {
       to: string[];
       customTemplate?: string;
     };
+    slack?: {
+      enabled: boolean;
+      webhookUrl: string;
+    };
   };
 }
 

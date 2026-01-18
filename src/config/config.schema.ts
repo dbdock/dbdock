@@ -102,17 +102,21 @@ class PitrConfig {
 
 class AlertsConfig {
   @IsString()
-  smtpHost: string;
+  @IsOptional()
+  smtpHost?: string;
 
   @IsNumber()
   @Min(1)
-  smtpPort: number;
+  @IsOptional()
+  smtpPort?: number;
 
   @IsString()
-  smtpUser: string;
+  @IsOptional()
+  smtpUser?: string;
 
   @IsString()
-  smtpPass: string;
+  @IsOptional()
+  smtpPass?: string;
 
   @IsString()
   @IsOptional()
@@ -120,7 +124,12 @@ class AlertsConfig {
 
   @IsArray()
   @IsString({ each: true })
-  to: string[];
+  @IsOptional()
+  to?: string[];
+
+  @IsString()
+  @IsOptional()
+  slackWebhook?: string;
 }
 
 export class DBDockConfig {

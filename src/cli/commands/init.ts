@@ -47,6 +47,7 @@ interface InitAnswers {
   minBackups?: number;
   runRetentionAfterBackup?: boolean;
   enableEmailAlerts: boolean;
+  enableSlackAlerts: boolean;
   smtpHost?: string;
   smtpPort?: number;
   smtpSecure?: boolean;
@@ -54,6 +55,7 @@ interface InitAnswers {
   smtpPassword?: string;
   emailFrom?: string;
   emailTo?: string;
+  slackWebhook?: string;
 }
 
 export async function initCommand(): Promise<void> {
@@ -320,8 +322,13 @@ export async function initCommand(): Promise<void> {
     {
       type: 'confirm',
       name: 'enableEmailAlerts',
-      message:
-        'Enable email alerts? (only works with programmatic/NestJS usage and cron schedules)',
+      message: 'Enable Email alerts?',
+      default: false,
+    },
+    {
+      type: 'confirm',
+      name: 'enableSlackAlerts',
+      message: 'Enable Slack alerts?',
       default: false,
     },
     {
@@ -397,6 +404,18 @@ export async function initCommand(): Promise<void> {
         return true;
       },
     },
+    {
+      type: 'input',
+      name: 'slackWebhook',
+      message: 'Slack Webhook URL:',
+      when: (answers: InitAnswers) => answers.enableSlackAlerts,
+      validate: (input: string) => {
+        if (!input.trim().startsWith('https://hooks.slack.com/services/')) {
+          return 'Please enter a valid Slack Webhook URL (starts with https://hooks.slack.com/services/)';
+        }
+        return true;
+      },
+    },
   ])) as InitAnswers;
 
   const config: CLIConfig = {
@@ -461,31 +480,40 @@ export async function initCommand(): Promise<void> {
           },
         }),
     },
-    ...(answers.enableEmailAlerts &&
-      answers.smtpHost &&
-      answers.smtpPort !== undefined &&
-      answers.smtpSecure !== undefined &&
-      answers.smtpUser &&
-      answers.smtpPassword &&
-      answers.emailFrom &&
-      answers.emailTo && {
-        alerts: {
-          email: {
-            enabled: true,
-            smtp: {
-              host: answers.smtpHost,
-              port: answers.smtpPort,
-              secure: answers.smtpSecure,
-              auth: {
-                user: answers.smtpUser,
-                pass: answers.smtpPassword,
+    ...((answers.enableEmailAlerts || answers.enableSlackAlerts) && {
+      alerts: {
+        ...(answers.enableEmailAlerts &&
+          answers.smtpHost &&
+          answers.smtpPort !== undefined &&
+          answers.smtpSecure !== undefined &&
+          answers.smtpUser &&
+          answers.smtpPassword &&
+          answers.emailFrom &&
+          answers.emailTo && {
+            email: {
+              enabled: true,
+              smtp: {
+                host: answers.smtpHost,
+                port: answers.smtpPort,
+                secure: answers.smtpSecure,
+                auth: {
+                  user: answers.smtpUser,
+                  pass: answers.smtpPassword,
+                },
               },
+              from: answers.emailFrom,
+              to: answers.emailTo.split(',').map((email: string) => email.trim()),
             },
-            from: answers.emailFrom,
-            to: answers.emailTo.split(',').map((email: string) => email.trim()),
-          },
-        },
-      }),
+          }),
+        ...(answers.enableSlackAlerts &&
+          answers.slackWebhook && {
+            slack: {
+              enabled: true,
+              webhookUrl: answers.slackWebhook,
+            },
+          }),
+      },
+    }),
   };
 
   saveConfig(config);
@@ -514,12 +542,12 @@ export async function initCommand(): Promise<void> {
     logger.info(`${config.storage.local?.path} is already in .gitignore`);
   }
 
-  if (answers.enableEmailAlerts) {
-    logger.info('\nNote: Email alerts are configured but only work with:');
+  if (answers.enableEmailAlerts || answers.enableSlackAlerts) {
+    logger.info('\nNote: Alerts are configured but only work with:');
     logger.log('  - Programmatic usage (NestJS module)');
     logger.log('  - Scheduled backups (cron jobs via the schedule module)');
     logger.log(
-      '  - Manual CLI commands (npx dbdock backup) do NOT send emails',
+      '  - Manual CLI commands (npx dbdock backup) do NOT send alerts',
     );
   }
 

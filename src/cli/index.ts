@@ -9,6 +9,7 @@ import { scheduleCommand } from './commands/schedule';
 import { listCommand } from './commands/list';
 import { deleteCommand } from './commands/delete';
 import { cleanupCommand } from './commands/cleanup';
+import { statusCommand } from './commands/status';
 
 process.on('SIGINT', () => {
   console.log('\n\nOperation cancelled by user');
@@ -80,5 +81,10 @@ program
   .option('--dry-run', 'Preview what will be deleted without deleting')
   .option('--force', 'Delete without confirmation')
   .action(cleanupCommand);
+
+program
+  .command('status')
+  .description('View configured backup schedules')
+  .action(statusCommand);
 
 program.parse();

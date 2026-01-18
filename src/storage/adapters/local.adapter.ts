@@ -171,7 +171,7 @@ export class LocalStorageAdapter implements IStorageAdapter {
 
       if (entry.isDirectory()) {
         await this.walkDirectory(fullPath, objects, basePath, maxKeys);
-      } else if (!entry.name.endsWith('.metadata.json')) {
+      } else {
         const stats = await stat(fullPath);
         const key = path.relative(basePath, fullPath);
 

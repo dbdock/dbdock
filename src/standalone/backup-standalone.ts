@@ -9,11 +9,13 @@ import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Upload } from '@aws-sdk/lib-storage';
 import { v2 as cloudinary } from 'cloudinary';
+import { formatFileSize } from '../utils/format';
 
 interface BackupResult {
   backupId: string;
   storageKey: string;
   size: number;
+  formattedSize: string;
   duration: number;
   downloadUrl?: string;
 }
@@ -383,6 +385,7 @@ export async function createBackupStandalone(
     backupId,
     storageKey,
     size: totalSize,
+    formattedSize: formatFileSize(totalSize),
     duration,
     downloadUrl,
   };

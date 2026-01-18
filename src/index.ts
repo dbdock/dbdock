@@ -29,9 +29,12 @@ export { PostgresConfigHelper } from './wal/postgres-config.helper';
 
 export { SchedulerService } from './scheduler/scheduler.service';
 export { SchedulerModule } from './scheduler/scheduler.module';
+export { ScheduleManager } from './scheduler/schedule-manager';
+export type { Schedule } from './scheduler/schedule-manager';
 
 export { DBDockLogger } from './utils/logger';
 export { CounterStream, ProgressStream } from './utils/stream.pipe';
+export { formatFileSize } from './utils/format';
 
 export { AlertService } from './alerts/alert.service';
 export { AlertModule } from './alerts/alert.module';

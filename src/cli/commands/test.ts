@@ -4,6 +4,10 @@ import { logger } from '../utils/logger';
 import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { Logger } from '@nestjs/common';
+import { S3StorageAdapter } from '../../storage/adapters/s3.adapter';
+import { R2StorageAdapter } from '../../storage/adapters/r2.adapter';
+import { LocalStorageAdapter } from '../../storage/adapters/local.adapter';
+import { CloudinaryStorageAdapter } from '../../storage/adapters/cloudinary.adapter';
 
 Logger.overrideLogger(false);
 
@@ -95,32 +99,109 @@ async function testStorageConfiguration(config: any): Promise<void> {
   const storageConfig = config.storage;
 
   if (storageConfig.provider === 'local') {
-    const path = storageConfig.local?.path || './backups';
+    const path = storageConfig.local?.path || storageConfig.localPath || './backups';
     if (!existsSync(path)) {
       throw new Error(`Local storage path does not exist: ${path}`);
     }
-  } else if (storageConfig.provider === 's3' || storageConfig.provider === 'r2') {
-    if (!storageConfig.s3?.bucket) {
-      throw new Error('S3/R2 bucket name is required');
+  } else if (storageConfig.provider === 's3') {
+    const bucket = storageConfig.s3?.bucket || storageConfig.bucket;
+    const endpoint = storageConfig.s3?.endpoint || storageConfig.endpoint;
+    const accessKeyId = storageConfig.s3?.accessKeyId || storageConfig.accessKeyId;
+    const secretAccessKey = storageConfig.s3?.secretAccessKey || storageConfig.secretAccessKey;
+
+    if (!bucket) {
+      throw new Error('S3 bucket name is required');
     }
-    if (!storageConfig.s3?.region) {
-      throw new Error('S3/R2 region is required');
+    if (!accessKeyId) {
+      throw new Error('S3 access key ID is required');
     }
-    if (!storageConfig.s3?.accessKeyId) {
-      throw new Error('S3/R2 access key ID is required');
+    if (!secretAccessKey) {
+      throw new Error('S3 secret access key is required');
     }
-    if (!storageConfig.s3?.secretAccessKey) {
-      throw new Error('S3/R2 secret access key is required');
+
+    try {
+      const adapter = new S3StorageAdapter({
+        endpoint,
+        bucket,
+        accessKeyId,
+        secretAccessKey,
+      });
+      await adapter.listObjects({ maxKeys: 1 });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`S3 connection test failed: ${errorMessage}`);
+    }
+  } else if (storageConfig.provider === 'r2') {
+    const bucket = storageConfig.s3?.bucket || storageConfig.bucket;
+    const endpoint = storageConfig.s3?.endpoint || storageConfig.endpoint;
+    const accessKeyId = storageConfig.s3?.accessKeyId || storageConfig.accessKeyId;
+    const secretAccessKey = storageConfig.s3?.secretAccessKey || storageConfig.secretAccessKey;
+
+    if (!bucket) {
+      throw new Error('R2 bucket name is required');
+    }
+    if (!endpoint) {
+      throw new Error('R2 endpoint (account ID) is required');
+    }
+    if (!accessKeyId) {
+      throw new Error('R2 access key ID is required');
+    }
+    if (!secretAccessKey) {
+      throw new Error('R2 secret access key is required');
+    }
+
+    try {
+      let accountId: string;
+      const endpointStr = endpoint.trim();
+      if (endpointStr.includes('://')) {
+        const match = endpointStr.match(/https?:\/\/([^.]+)/);
+        if (!match || !match[1]) {
+          throw new Error('Invalid R2 endpoint format. Expected account ID or URL like https://accountId.r2.cloudflarestorage.com');
+        }
+        accountId = match[1];
+      } else if (endpointStr.includes('.')) {
+        accountId = endpointStr.split('.')[0];
+      } else {
+        accountId = endpointStr;
+      }
+
+      const adapter = new R2StorageAdapter({
+        accountId,
+        bucket,
+        accessKeyId,
+        secretAccessKey,
+      });
+      await adapter.listObjects({ maxKeys: 1 });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`R2 connection test failed: ${errorMessage}`);
     }
   } else if (storageConfig.provider === 'cloudinary') {
-    if (!storageConfig.cloudinary?.cloudName) {
+    const cloudName = storageConfig.cloudinary?.cloudName || storageConfig.bucket;
+    const apiKey = storageConfig.cloudinary?.apiKey || storageConfig.accessKeyId;
+    const apiSecret = storageConfig.cloudinary?.apiSecret || storageConfig.secretAccessKey;
+
+    if (!cloudName) {
       throw new Error('Cloudinary cloud name is required');
     }
-    if (!storageConfig.cloudinary?.apiKey) {
+    if (!apiKey) {
       throw new Error('Cloudinary API key is required');
     }
-    if (!storageConfig.cloudinary?.apiSecret) {
+    if (!apiSecret) {
       throw new Error('Cloudinary API secret is required');
+    }
+
+    try {
+      const adapter = new CloudinaryStorageAdapter({
+        cloudName,
+        apiKey,
+        apiSecret,
+        folder: storageConfig.endpoint || 'dbdock_backups',
+      });
+      await adapter.listObjects({ maxKeys: 1 });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Cloudinary connection test failed: ${errorMessage}`);
     }
   }
 }

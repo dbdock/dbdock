@@ -122,13 +122,19 @@ export class WalArchiverService implements OnModuleInit {
       };
     } catch (error) {
       metadata.status = WalStatus.FAILED;
-      metadata.error = (error as Error).message;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      metadata.error = errorMessage;
 
-      this.logger.logWalArchiveError(walFile, error as Error);
+      const cleanError = new Error(errorMessage);
+      if (error instanceof Error && error.name) {
+        cleanError.name = error.name;
+      }
+
+      this.logger.logWalArchiveError(walFile, cleanError);
 
       await this.saveWalMetadata(metadata);
 
-      throw error;
+      throw cleanError;
     }
   }
 

@@ -16,6 +16,7 @@ import {
 } from './backup.types';
 import { spawn } from 'child_process';
 import { Readable, Transform } from 'stream';
+import { formatFileSize } from '../utils/format';
 
 @Injectable()
 export class BackupService {
@@ -48,7 +49,7 @@ export class BackupService {
       status: BackupStatus.IN_PROGRESS,
       database: this.configService.get('postgres').database,
       startTime,
-      storageKey: this.generateStorageKey(backupId, startTime),
+      storageKey: this.generateStorageKey(backupId, startTime, options.format),
       compression: {
         enabled: options.compress !== false,
         algorithm: 'brotli',
@@ -119,6 +120,7 @@ export class BackupService {
       metadata.endTime = endTime;
       metadata.duration = endTime.getTime() - startTime.getTime();
       metadata.size = counterStream.getBytesProcessed();
+      metadata.formattedSize = formatFileSize(metadata.size);
       metadata.compressedSize = compressedCounter.getBytesProcessed();
 
       if (metadata.size === 0) {
@@ -159,16 +161,22 @@ export class BackupService {
       };
     } catch (error) {
       metadata.status = BackupStatus.FAILED;
-      metadata.error = (error as Error).message;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      metadata.error = errorMessage;
       metadata.endTime = new Date();
 
-      this.logger.logBackupError(backupId, error as Error);
+      const cleanError = new Error(errorMessage);
+      if (error instanceof Error && error.name) {
+        cleanError.name = error.name;
+      }
+
+      this.logger.logBackupError(backupId, cleanError);
 
       await this.saveMetadata(metadata);
 
-      await this.alertService.sendBackupFailureAlert(metadata, error as Error);
+      await this.alertService.sendBackupFailureAlert(metadata, cleanError);
 
-      throw error;
+      throw cleanError;
     }
   }
 
@@ -177,6 +185,18 @@ export class BackupService {
     process: ReturnType<typeof spawn>;
   } {
     const pgConfig = this.configService.get('postgres');
+    
+    // Default to 'custom' format if not specified
+    // Map CLI-style formats to pg_dump flags
+    const formatMap: Record<string, string> = {
+      custom: 'custom',
+      plain: 'plain',
+      directory: 'directory',
+      tar: 'tar',
+    };
+    
+    const format = options.format || 'custom';
+    const pgFormat = formatMap[format] || 'custom';
 
     const args = [
       '-h',
@@ -187,7 +207,7 @@ export class BackupService {
       pgConfig.user,
       '-d',
       pgConfig.database,
-      '--format=custom',
+      `--format=${pgFormat}`,
       '--verbose',
     ];
 
@@ -245,7 +265,11 @@ export class BackupService {
     return { stream: pgDump.stdout, process: pgDump };
   }
 
-  private generateStorageKey(backupId: string, timestamp: Date): string {
+  private generateStorageKey(
+    backupId: string,
+    timestamp: Date,
+    format: string = 'custom',
+  ): string {
     const database = this.configService.get('postgres').database;
     const dateStr = timestamp.toISOString().split('T')[0];
     const timeStr = timestamp
@@ -254,12 +278,21 @@ export class BackupService {
       .replace(/:/g, '-')
       .split('.')[0];
 
+    const extensionMap: Record<string, string> = {
+      custom: 'sql', // CLI uses .sql for custom format
+      plain: 'sql',
+      directory: 'dir',
+      tar: 'tar',
+    };
+    
+    const extension = extensionMap[format] || 'sql';
+
     const storageConfig = this.configService.get('storage');
     if (storageConfig.provider === StorageProvider.LOCAL) {
-      return `${database}/${dateStr}/${backupId}_${timeStr}.backup`;
+      return `${database}/${dateStr}/${backupId}_${timeStr}.${extension}`;
     }
 
-    return `backups/${database}/${dateStr}/${backupId}_${timeStr}.backup`;
+    return `backups/${database}/${dateStr}/${backupId}_${timeStr}.${extension}`;
   }
 
   private async saveMetadata(metadata: BackupMetadata): Promise<void> {
@@ -276,8 +309,12 @@ export class BackupService {
 
   async getBackupMetadata(backupId: string): Promise<BackupMetadata | null> {
     const storageAdapter = this.storageService.getAdapter();
+    const storageConfig = this.configService.get('storage');
+    const prefix =
+      storageConfig.provider === StorageProvider.LOCAL ? '' : 'backups/';
+
     const objects = await storageAdapter.listObjects({
-      prefix: 'backups/',
+      prefix,
     });
 
     const metadataObject = objects.find(
@@ -303,8 +340,12 @@ export class BackupService {
 
   async listBackups(): Promise<BackupMetadata[]> {
     const storageAdapter = this.storageService.getAdapter();
+    const storageConfig = this.configService.get('storage');
+    const prefix =
+      storageConfig.provider === StorageProvider.LOCAL ? '' : 'backups/';
+
     const objects = await storageAdapter.listObjects({
-      prefix: 'backups/',
+      prefix,
     });
 
     const metadataObjects = objects.filter((obj) =>

@@ -1,37 +1,121 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron, CronExpression, SchedulerRegistry } from '@nestjs/schedule';
 import { DBDockConfigService } from '../config/config.service';
 import { BackupService } from '../backup/backup.service';
 import { RetentionService } from '../wal/retention.service';
 import { ScheduleType } from '../config/config.schema';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+interface ScheduleConfig {
+  name: string;
+  cron: string;
+  enabled: boolean;
+}
 
 @Injectable()
 export class SchedulerService implements OnModuleInit {
   private readonly logger = new Logger(SchedulerService.name);
   private scheduledBackupsEnabled = false;
   private retentionCleanupEnabled = true;
+  private registeredJobs: Map<string, any> = new Map();
 
   constructor(
     private configService: DBDockConfigService,
     private backupService: BackupService,
     private retentionService: RetentionService,
+    private schedulerRegistry: SchedulerRegistry,
   ) {}
 
   onModuleInit() {
-    const scheduleConfig = this.configService.get('schedule');
-
-    if (scheduleConfig) {
-      this.scheduledBackupsEnabled = true;
-      this.logger.log(
-        `Scheduled backups enabled: ${scheduleConfig.type} - ${scheduleConfig.expression}`,
-      );
-    } else {
-      this.logger.log('Scheduled backups disabled');
-    }
+    this.loadAndRegisterSchedules();
 
     if (this.retentionCleanupEnabled) {
       this.logger.log('Retention cleanup scheduler enabled');
     }
+  }
+
+  private loadAndRegisterSchedules() {
+    try {
+      const configPath = join(process.cwd(), 'dbdock.config.json');
+      const configFile = JSON.parse(readFileSync(configPath, 'utf-8'));
+      const schedules: ScheduleConfig[] = configFile.backup?.schedules || [];
+
+      if (schedules.length === 0) {
+        this.logger.log('No backup schedules configured');
+        return;
+      }
+
+      const enabledSchedules = schedules.filter((s) => s.enabled !== false);
+
+      if (enabledSchedules.length === 0) {
+        this.logger.log('All backup schedules are disabled');
+        return;
+      }
+
+      enabledSchedules.forEach((schedule) => {
+        this.registerSchedule(schedule);
+      });
+
+      this.logger.log(
+        `Registered ${enabledSchedules.length} backup schedule(s)`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to load schedules: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  private registerSchedule(schedule: ScheduleConfig) {
+    try {
+      const { CronJob } = require('cron');
+      const job = new CronJob(schedule.cron, async () => {
+        await this.executeScheduledBackup(schedule.name);
+      });
+
+      this.schedulerRegistry.addCronJob(schedule.name, job as any);
+      job.start();
+
+      this.registeredJobs.set(schedule.name, job);
+      this.logger.log(
+        `Registered schedule: ${schedule.name} (${schedule.cron})`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to register schedule "${schedule.name}": ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  private async executeScheduledBackup(scheduleName: string): Promise<void> {
+    this.logger.log(`Executing scheduled backup: ${scheduleName}`);
+
+    try {
+      const result = await this.backupService.createBackup({
+        compress: true,
+        encrypt: true,
+      });
+
+      this.logger.log(
+        `Scheduled backup "${scheduleName}" completed: ${result.metadata.id} (${result.metadata.size} bytes)`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Scheduled backup "${scheduleName}" failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  reloadSchedules(): void {
+    this.registeredJobs.forEach((job, name) => {
+      job.stop();
+      this.schedulerRegistry.deleteCronJob(name);
+    });
+
+    this.registeredJobs.clear();
+
+    this.loadAndRegisterSchedules();
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_3AM)

@@ -47,7 +47,19 @@ export class StorageService {
         if (!storageConfig.endpoint) {
           throw new Error('R2 account ID is required in endpoint');
         }
-        const accountId = storageConfig.endpoint.split('.')[0];
+        let accountId: string;
+        const endpoint = storageConfig.endpoint.trim();
+        if (endpoint.includes('://')) {
+          const match = endpoint.match(/https?:\/\/([^.]+)/);
+          if (!match || !match[1]) {
+            throw new Error('Invalid R2 endpoint format. Expected account ID or URL like https://accountId.r2.cloudflarestorage.com');
+          }
+          accountId = match[1];
+        } else if (endpoint.includes('.')) {
+          accountId = endpoint.split('.')[0];
+        } else {
+          accountId = endpoint;
+        }
         this.adapter = new R2StorageAdapter({
           accountId,
           bucket: storageConfig.bucket,

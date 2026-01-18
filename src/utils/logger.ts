@@ -12,7 +12,7 @@ export class DBDockLogger extends NestLogger {
   }
 
   logBackupError(backupId: string, error: Error): void {
-    this.error(`Backup failed: ${backupId} - ${error.message}`, error.stack);
+    this.error(`Backup failed: ${backupId} - ${error.message}`);
   }
 
   logRestoreStart(backupId: string, targetTime?: string): void {
@@ -25,7 +25,7 @@ export class DBDockLogger extends NestLogger {
   }
 
   logRestoreError(backupId: string, error: Error): void {
-    this.error(`Restore failed: ${backupId} - ${error.message}`, error.stack);
+    this.error(`Restore failed: ${backupId} - ${error.message}`);
   }
 
   logWalArchive(walFile: string): void {

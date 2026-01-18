@@ -21,6 +21,7 @@ export interface BackupMetadata {
   endTime?: Date;
   duration?: number;
   size?: number;
+  formattedSize?: string;
   compressedSize?: number;
   storageKey: string;
   compression: {
@@ -38,6 +39,7 @@ export interface BackupOptions {
   encrypt?: boolean;
   schemas?: string[];
   tables?: string[];
+  format?: 'custom' | 'plain' | 'directory' | 'tar';
 }
 
 export interface BackupResult {
