@@ -17,6 +17,7 @@ import {
 import { spawn } from 'child_process';
 import { Readable, Transform } from 'stream';
 import { formatFileSize } from '../utils/format';
+import { hasPgPassEntry } from '../config/pgpass.helper';
 
 @Injectable()
 export class BackupService {
@@ -223,12 +224,20 @@ export class BackupService {
       });
     }
 
-    const pgDump = spawn('pg_dump', args, {
-      env: {
-        ...process.env,
-        PGPASSWORD: pgConfig.password,
-      },
-    });
+    const usePgPass = hasPgPassEntry(
+      pgConfig.host,
+      pgConfig.port,
+      pgConfig.database,
+      pgConfig.user
+    );
+
+    const env: NodeJS.ProcessEnv = { ...process.env };
+
+    if (!usePgPass && pgConfig.password) {
+      env.PGPASSWORD = pgConfig.password;
+    }
+
+    const pgDump = spawn('pg_dump', args, { env });
 
     const stderrChunks: Buffer[] = [];
     pgDump.stderr.on('data', (data: Buffer) => {

@@ -22,7 +22,8 @@ class PostgresConfig {
   user: string;
 
   @IsString()
-  password: string;
+  @IsOptional()
+  password?: string;
 
   @IsString()
   database: string;
@@ -57,6 +58,22 @@ class StorageConfig {
   @IsString()
   @IsOptional()
   localPath?: string;
+
+  @IsString()
+  @IsOptional()
+  region?: string;
+
+  @IsString()
+  @IsOptional()
+  cloudinaryCloudName?: string;
+
+  @IsString()
+  @IsOptional()
+  cloudinaryApiKey?: string;
+
+  @IsString()
+  @IsOptional()
+  cloudinaryApiSecret?: string;
 }
 
 class EncryptionConfig {

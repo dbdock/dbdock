@@ -1,18 +1,22 @@
 {
+  "_comment": "DBDock Configuration - Non-Sensitive Settings Only",
+  "_security": "Sensitive values (passwords, API keys) should be set via environment variables. See .env.example",
+
   "database": {
     "type": "postgres",
     "host": "localhost",
     "port": 5432,
     "username": "postgres",
-    "password": "your-password",
     "database": "myapp"
   },
+
   "storage": {
     "provider": "local",
     "local": {
       "path": "./backups"
     }
   },
+
   "backup": {
     "compression": {
       "enabled": true,

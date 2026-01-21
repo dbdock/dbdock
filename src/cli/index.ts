@@ -10,6 +10,7 @@ import { listCommand } from './commands/list';
 import { deleteCommand } from './commands/delete';
 import { cleanupCommand } from './commands/cleanup';
 import { statusCommand } from './commands/status';
+import { migrateConfigCommand } from './commands/migrate-config';
 
 process.on('SIGINT', () => {
   console.log('\n\nOperation cancelled by user');
@@ -32,6 +33,11 @@ program
   .command('init')
   .description('Initialize DBDock configuration')
   .action(initCommand);
+
+program
+  .command('migrate-config')
+  .description('Migrate secrets from config file to environment variables')
+  .action(migrateConfigCommand);
 
 program
   .command('backup')

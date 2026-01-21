@@ -2,9 +2,18 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService as NestConfigService } from '@nestjs/config';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
-import { DBDockConfig } from './config.schema';
+import { DBDockConfig, StorageProvider } from './config.schema';
 import * as fs from 'fs';
 import * as path from 'path';
+import {
+  loadSecretsFromEnv,
+  mergeSecretsIntoConfig,
+  hasSecretsInConfig,
+  validateSecrets,
+  formatMigrationInstructions,
+  ENV_VAR_MAPPING,
+} from './secrets.validator';
+import { checkFilePermissions } from './permissions.checker';
 
 @Injectable()
 export class DBDockConfigService {
@@ -21,16 +30,41 @@ export class DBDockConfigService {
     );
 
     let configData: unknown;
+    let configFromFile = false;
 
     if (fs.existsSync(configPath)) {
       const configFile = fs.readFileSync(configPath, 'utf-8');
       configData = JSON.parse(configFile);
+      configFromFile = true;
+
+      this.checkConfigFilePermissions(configPath);
     } else {
       configData = this.loadFromEnvironment();
     }
 
-    // Transform CLI format to programmatic format if needed
     configData = this.transformCLIToProgrammatic(configData);
+
+    const envSecrets = loadSecretsFromEnv();
+    configData = mergeSecretsIntoConfig(
+      configData as Record<string, unknown>,
+      envSecrets
+    );
+
+    if (configFromFile) {
+      this.warnAboutLegacySecrets(configData as Record<string, unknown>);
+    }
+
+    const strictMode = process.env.DBDOCK_STRICT_MODE === 'true';
+    const secretsValidation = validateSecrets(
+      configData as Record<string, unknown>,
+      strictMode
+    );
+
+    if (!secretsValidation.valid && strictMode) {
+      this.handleError(
+        `❌ DBDock Security Error:\n\n${secretsValidation.warnings.join('\n')}`
+      );
+    }
 
     const configInstance = plainToInstance(DBDockConfig, configData);
     const errors = validateSync(configInstance, {
@@ -48,6 +82,31 @@ export class DBDockConfigService {
     this.validateStorageProvider(configInstance);
 
     this.config = configInstance;
+  }
+
+  private checkConfigFilePermissions(configPath: string): void {
+    try {
+      const permResult = checkFilePermissions(configPath);
+      if (!permResult.secure) {
+        console.warn(
+          '\x1b[33m%s\x1b[0m',
+          `⚠️  Config file has insecure permissions (${permResult.currentMode}).\n` +
+            `   Recommended: ${permResult.recommendedMode}\n` +
+            `   Fix with: chmod 600 ${configPath}\n`
+        );
+      }
+    } catch {
+    }
+  }
+
+  private warnAboutLegacySecrets(configData: Record<string, unknown>): void {
+    const secretsInConfig = hasSecretsInConfig(configData);
+    if (secretsInConfig.length > 0) {
+      console.warn(
+        '\x1b[33m%s\x1b[0m',
+        formatMigrationInstructions(secretsInConfig)
+      );
+    }
   }
 
   /**
@@ -185,23 +244,32 @@ export class DBDockConfigService {
         host: this.nestConfig.get<string>('DB_HOST', 'localhost'),
         port: this.nestConfig.get<number>('DB_PORT', 5432),
         user: this.nestConfig.get<string>('DB_USER', 'postgres'),
-        password: this.nestConfig.get<string>('DB_PASSWORD', ''),
+        password: this.nestConfig.get<string>('DBDOCK_DB_PASSWORD') ||
+          this.nestConfig.get<string>('DB_PASSWORD', ''),
         database: this.nestConfig.get<string>('DB_NAME', 'postgres'),
       },
       storage: {
-        provider: this.nestConfig.get<any>('STORAGE_PROVIDER', 'local'),
+        provider: this.nestConfig.get<StorageProvider>('STORAGE_PROVIDER', StorageProvider.LOCAL),
         bucket: this.nestConfig.get<string>('STORAGE_BUCKET', 'dbdock-backups'),
         endpoint: this.nestConfig.get<string>('STORAGE_ENDPOINT'),
-        accessKeyId: this.nestConfig.get<string>('STORAGE_ACCESS_KEY'),
-        secretAccessKey: this.nestConfig.get<string>('STORAGE_SECRET_KEY'),
+        accessKeyId: this.nestConfig.get<string>('DBDOCK_STORAGE_ACCESS_KEY') ||
+          this.nestConfig.get<string>('STORAGE_ACCESS_KEY'),
+        secretAccessKey: this.nestConfig.get<string>('DBDOCK_STORAGE_SECRET_KEY') ||
+          this.nestConfig.get<string>('STORAGE_SECRET_KEY'),
         localPath: this.nestConfig.get<string>(
           'STORAGE_LOCAL_PATH',
           './backups',
         ),
+        cloudinaryCloudName: this.nestConfig.get<string>('CLOUDINARY_CLOUD_NAME'),
+        cloudinaryApiKey: this.nestConfig.get<string>('DBDOCK_CLOUDINARY_API_KEY') ||
+          this.nestConfig.get<string>('CLOUDINARY_API_KEY'),
+        cloudinaryApiSecret: this.nestConfig.get<string>('DBDOCK_CLOUDINARY_API_SECRET') ||
+          this.nestConfig.get<string>('CLOUDINARY_API_SECRET'),
       },
       encryption: {
         enabled: this.nestConfig.get<boolean>('ENCRYPTION_ENABLED', true),
-        secret: this.nestConfig.get<string>('ENCRYPTION_SECRET'),
+        secret: this.nestConfig.get<string>('DBDOCK_ENCRYPTION_SECRET') ||
+          this.nestConfig.get<string>('ENCRYPTION_SECRET'),
         iterations: this.nestConfig.get<number>('ENCRYPTION_ITERATIONS', 100000),
       },
       pitr: {
@@ -211,6 +279,18 @@ export class DBDockConfigService {
           300,
         ),
         retentionDays: this.nestConfig.get<number>('PITR_RETENTION_DAYS', 30),
+      },
+      alerts: {
+        smtpHost: this.nestConfig.get<string>('SMTP_HOST'),
+        smtpPort: this.nestConfig.get<number>('SMTP_PORT'),
+        smtpUser: this.nestConfig.get<string>('DBDOCK_SMTP_USER') ||
+          this.nestConfig.get<string>('SMTP_USER'),
+        smtpPass: this.nestConfig.get<string>('DBDOCK_SMTP_PASS') ||
+          this.nestConfig.get<string>('SMTP_PASS'),
+        from: this.nestConfig.get<string>('SMTP_FROM'),
+        to: this.nestConfig.get<string>('ALERT_EMAILS')?.split(','),
+        slackWebhook: this.nestConfig.get<string>('DBDOCK_SLACK_WEBHOOK') ||
+          this.nestConfig.get<string>('SLACK_WEBHOOK'),
       },
     };
   }

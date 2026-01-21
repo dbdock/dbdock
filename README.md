@@ -21,12 +21,13 @@ npx dbdock restore   # Restore backup
 
 - **Beautiful CLI** - Real-time progress bars, speed tracking, smart filtering
 - **Multiple Storage** - Local, AWS S3, Cloudflare R2, Cloudinary
-- **Security** - AES-256 encryption, Brotli compression
+- **Security First** - Hybrid config (env vars for secrets), AES-256 encryption, credential masking, .pgpass support
 - **Retention Policies** - Automatic cleanup by count/age with safety nets
 - **Smart UX** - Intelligent filtering for 100+ backups, clear error messages
 - **Alerts** - Email (SMTP) and Slack notifications for backups (CLI & Programmatic)
 - **TypeScript Native** - Full type safety for programmatic usage
 - **Automation** - Cron schedules, auto-cleanup after backups
+- **Migration Tool** - One command to migrate legacy configs to secure env vars
 
 ## Installation
 
@@ -52,14 +53,27 @@ npx dbdock status
 
 ### `dbdock init`
 
-Interactive setup wizard that creates `dbdock.config.json` with:
+Interactive setup wizard that creates secure configuration:
 
 - Database connection (host, port, credentials)
 - Storage provider (Local, S3, R2, Cloudinary)
 - Encryption/compression settings
 - Email and Slack alerts (optional)
 
-Auto-adds config to `.gitignore` to protect credentials.
+**Security-first approach:**
+- Saves non-sensitive config to `dbdock.config.json` (safe for git)
+- Saves secrets to `.env.local` (automatically gitignored)
+- Auto-updates `.gitignore` to exclude sensitive files
+
+### `dbdock migrate-config`
+
+Migrate existing configurations with embedded secrets:
+
+```bash
+npx dbdock migrate-config
+```
+
+Extracts secrets from `dbdock.config.json`, creates `.env.local`, and updates your config to use environment variables.
 
 ### `npx dbdock backup`
 
@@ -221,27 +235,101 @@ dbdock schedule
 
 **⚠️ Important:** Schedules only execute when DBDock is integrated into your Node.js application (see Programmatic Usage below). The CLI is for configuration only.
 
+## Security Best Practices
+
+### Secure Configuration Management
+
+DBDock uses a **hybrid configuration approach** to keep your secrets safe:
+
+- **Non-sensitive settings** → `dbdock.config.json` (safe for version control)
+- **Sensitive secrets** → Environment variables (NEVER commit to git)
+
+When you run `npx dbdock init`, DBDock automatically:
+- Saves credentials to `.env.local` (not committed)
+- Saves only non-sensitive config to `dbdock.config.json`
+- Updates `.gitignore` to exclude `.env.local`
+
+### Environment Variables
+
+Set these environment variables for secure credential management:
+
+```bash
+# Database password (Required)
+DBDOCK_DB_PASSWORD=your-database-password
+
+# Storage credentials (Required for cloud storage)
+DBDOCK_STORAGE_ACCESS_KEY=your-access-key
+DBDOCK_STORAGE_SECRET_KEY=your-secret-key
+
+# Encryption key (Required if encryption enabled)
+# Generate with: openssl rand -hex 32
+DBDOCK_ENCRYPTION_SECRET=64-char-hex-string
+
+# Email alerts (Optional)
+DBDOCK_SMTP_USER=your-email@example.com
+DBDOCK_SMTP_PASS=your-app-password
+
+# Slack alerts (Optional)
+DBDOCK_SLACK_WEBHOOK=https://hooks.slack.com/services/...
+```
+
+### Migration from Legacy Config
+
+If you have an existing configuration with secrets in `dbdock.config.json`:
+
+```bash
+npx dbdock migrate-config
+```
+
+This command will:
+1. Extract all secrets from your config file
+2. Create/update `.env.local` with the secrets
+3. Remove secrets from `dbdock.config.json`
+4. Update `.gitignore` automatically
+
+### Using .pgpass for PostgreSQL
+
+For enhanced security, use `.pgpass` instead of environment variables:
+
+```bash
+# Create the file
+touch ~/.pgpass
+chmod 600 ~/.pgpass
+
+# Add your connection (format: host:port:database:username:password)
+echo "localhost:5432:myapp:postgres:my-secure-password" >> ~/.pgpass
+```
+
+DBDock will automatically use `.pgpass` when available, which is more secure than `PGPASSWORD` environment variables.
+
+### Security Features
+
+- **Automatic credential masking** - All passwords and keys are masked in logs
+- **File permission checking** - Warns about insecure config file permissions
+- **Encryption at rest** - AES-256-GCM encryption for backups
+- **Strict mode** - Optional enforcement of env-only secrets (`DBDOCK_STRICT_MODE=true`)
+
+📖 **[Read the full Security Guide](SECURITY.md)** for deployment best practices, compliance guidelines, and incident response procedures.
+
 ## Configuration
 
-After running `npx dbdock init`, a `dbdock.config.json` file is created:
+After running `npx dbdock init`, a `dbdock.config.json` file is created (without sensitive data):
 
 ```json
 {
+  "_comment": "Secrets (passwords, keys) are set via environment variables",
   "database": {
     "type": "postgres",
     "host": "localhost",
     "port": 5432,
     "username": "postgres",
-    "password": "your-password",
     "database": "myapp"
   },
   "storage": {
     "provider": "s3",
     "s3": {
       "bucket": "my-backups",
-      "region": "us-east-1",
-      "accessKeyId": "YOUR_ACCESS_KEY",
-      "secretAccessKey": "YOUR_SECRET_KEY"
+      "region": "us-east-1"
     }
   },
   "backup": {
@@ -251,8 +339,7 @@ After running `npx dbdock init`, a `dbdock.config.json` file is created:
       "level": 6
     },
     "encryption": {
-      "enabled": true,
-      "key": "64-character-hex-key-generated-with-openssl-or-node-crypto"
+      "enabled": true
     },
     "retention": {
       "enabled": true,
@@ -268,11 +355,7 @@ After running `npx dbdock init`, a `dbdock.config.json` file is created:
       "smtp": {
         "host": "smtp.gmail.com",
         "port": 587,
-        "secure": false,
-        "auth": {
-          "user": "your-email@gmail.com",
-          "pass": "your-app-password"
-        }
+        "secure": false
       },
       "from": "backups@yourapp.com",
       "to": ["admin@yourapp.com"]
@@ -280,6 +363,8 @@ After running `npx dbdock init`, a `dbdock.config.json` file is created:
   }
 }
 ```
+
+**Note:** SMTP credentials (`user`, `pass`) and storage secrets are set via environment variables for security.
 
 ### Storage Providers
 
@@ -297,15 +382,19 @@ After running `npx dbdock init`, a `dbdock.config.json` file is created:
     "provider": "s3",
     "s3": {
       "bucket": "my-backups",
-      "region": "us-east-1",
-      "accessKeyId": "YOUR_KEY",
-      "secretAccessKey": "YOUR_SECRET"
+      "region": "us-east-1"
     }
   }
 }
 ```
 
-Required permissions: `s3:PutObject`, `s3:GetObject`, `s3:ListBucket`, `s3:DeleteObject`
+Set credentials via environment variables:
+```bash
+DBDOCK_STORAGE_ACCESS_KEY=your-access-key
+DBDOCK_STORAGE_SECRET_KEY=your-secret-key
+```
+
+Required IAM permissions: `s3:PutObject`, `s3:GetObject`, `s3:ListBucket`, `s3:DeleteObject`
 
 **Cloudflare R2:**
 
@@ -316,13 +405,13 @@ Required permissions: `s3:PutObject`, `s3:GetObject`, `s3:ListBucket`, `s3:Delet
     "s3": {
       "bucket": "my-backups",
       "region": "auto",
-      "endpoint": "https://ACCOUNT_ID.r2.cloudflarestorage.com",
-      "accessKeyId": "YOUR_KEY",
-      "secretAccessKey": "YOUR_SECRET"
+      "endpoint": "https://ACCOUNT_ID.r2.cloudflarestorage.com"
     }
   }
 }
 ```
+
+Set credentials via environment variables (same as S3 above).
 
 **Cloudinary:**
 
@@ -331,12 +420,16 @@ Required permissions: `s3:PutObject`, `s3:GetObject`, `s3:ListBucket`, `s3:Delet
   "storage": {
     "provider": "cloudinary",
     "cloudinary": {
-      "cloudName": "your-cloud",
-      "apiKey": "YOUR_KEY",
-      "apiSecret": "YOUR_SECRET"
+      "cloudName": "your-cloud"
     }
   }
 }
+```
+
+Set credentials via environment variables:
+```bash
+DBDOCK_CLOUDINARY_API_KEY=your-api-key
+DBDOCK_CLOUDINARY_API_SECRET=your-api-secret
 ```
 
 All cloud backups stored in `dbdock_backups/` folder with format: `backup-YYYY-MM-DD-HH-MM-SS-BACKUPID.sql`

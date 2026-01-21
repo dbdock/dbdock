@@ -652,7 +652,7 @@ interface MigrationDetailsAnswer {
       logger.log(`  Port:      ${targetDbConfig.port}`);
       logger.log(`  Database:  ${targetDbConfig.database}`);
       logger.log(`  Username:  ${targetDbConfig.username}`);
-      logger.log(`  Password:  ${targetDbConfig.password}`);
+      logger.log(`  Password:  ********`);
       logger.log('────────────────────────────────────────────────────────');
       logger.info('You can now connect to your new database instance.\n');
     }
