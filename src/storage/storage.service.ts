@@ -70,13 +70,16 @@ export class StorageService {
         break;
 
       case StorageProvider.CLOUDINARY:
-        if (!storageConfig.accessKeyId || !storageConfig.secretAccessKey) {
-          throw new Error('Cloudinary credentials are required');
+        if (!storageConfig.cloudinaryApiKey || !storageConfig.cloudinaryApiSecret) {
+          throw new Error('Cloudinary credentials are required (cloudinaryApiKey, cloudinaryApiSecret)');
+        }
+        if (!storageConfig.cloudinaryCloudName) {
+          throw new Error('Cloudinary cloud name is required (cloudinaryCloudName)');
         }
         this.adapter = new CloudinaryStorageAdapter({
-          cloudName: storageConfig.bucket,
-          apiKey: storageConfig.accessKeyId,
-          apiSecret: storageConfig.secretAccessKey,
+          cloudName: storageConfig.cloudinaryCloudName,
+          apiKey: storageConfig.cloudinaryApiKey,
+          apiSecret: storageConfig.cloudinaryApiSecret,
           folder: storageConfig.endpoint,
         });
         this.logger.log('Initialized Cloudinary storage adapter');

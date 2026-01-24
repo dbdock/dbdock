@@ -1,5 +1,7 @@
 export { AppModule } from './app.module';
+export { AppModuleWithoutScheduler } from './app-module-without-scheduler';
 export { createDBDock } from './dbdock';
+export type { DBDockOptions } from './dbdock';
 
 export { BackupService } from './backup/backup.service';
 export { BackupModule } from './backup/backup.module';

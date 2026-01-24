@@ -1,5 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as dotenv from 'dotenv';
+
+dotenv.config({ path: path.join(process.cwd(), '.env') });
+dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: true });
 
 export const SENSITIVE_FIELDS = [
   'postgres.password',
@@ -11,6 +15,7 @@ export const SENSITIVE_FIELDS = [
   'alerts.smtpUser',
   'alerts.smtpPass',
   'alerts.slackWebhook',
+  'alerts.customWebhook',
 ] as const;
 
 export const ENV_VAR_MAPPING: Record<string, string> = {
@@ -23,6 +28,7 @@ export const ENV_VAR_MAPPING: Record<string, string> = {
   'alerts.smtpUser': 'DBDOCK_SMTP_USER',
   'alerts.smtpPass': 'DBDOCK_SMTP_PASS',
   'alerts.slackWebhook': 'DBDOCK_SLACK_WEBHOOK',
+  'alerts.customWebhook': 'DBDOCK_CUSTOM_WEBHOOK',
 };
 
 export type SensitiveField = (typeof SENSITIVE_FIELDS)[number];

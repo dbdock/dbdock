@@ -62,7 +62,7 @@ Interactive setup wizard that creates secure configuration:
 
 **Security-first approach:**
 - Saves non-sensitive config to `dbdock.config.json` (safe for git)
-- Saves secrets to `.env.local` (automatically gitignored)
+- Saves secrets to `.env` (automatically gitignored)
 - Auto-updates `.gitignore` to exclude sensitive files
 
 ### `dbdock migrate-config`
@@ -73,7 +73,7 @@ Migrate existing configurations with embedded secrets:
 npx dbdock migrate-config
 ```
 
-Extracts secrets from `dbdock.config.json`, creates `.env.local`, and updates your config to use environment variables.
+Extracts secrets from `dbdock.config.json`, creates `.env`, and updates your config to use environment variables.
 
 ### `npx dbdock backup`
 
@@ -245,9 +245,11 @@ DBDock uses a **hybrid configuration approach** to keep your secrets safe:
 - **Sensitive secrets** → Environment variables (NEVER commit to git)
 
 When you run `npx dbdock init`, DBDock automatically:
-- Saves credentials to `.env.local` (not committed)
+- Saves credentials to `.env` (not committed)
 - Saves only non-sensitive config to `dbdock.config.json`
-- Updates `.gitignore` to exclude `.env.local`
+- Updates `.gitignore` to exclude `.env`
+
+**Note:** DBDock reads environment variables from both `.env` and `.env.local` files (with `.env.local` taking priority for local overrides). You can use either file depending on your workflow.
 
 ### Environment Variables
 
@@ -283,7 +285,7 @@ npx dbdock migrate-config
 
 This command will:
 1. Extract all secrets from your config file
-2. Create/update `.env.local` with the secrets
+2. Create/update `.env` with the secrets
 3. Remove secrets from `dbdock.config.json`
 4. Update `.gitignore` automatically
 

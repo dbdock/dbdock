@@ -231,6 +231,10 @@ export class DBDockConfigService {
       if (configData.alerts.slack) {
         transformed.alerts.slackWebhook = configData.alerts.slack.webhookUrl;
       }
+
+      if (configData.alerts.webhook) {
+        transformed.alerts.customWebhook = configData.alerts.webhook.url || configData.alerts.webhook;
+      }
     } else if (configData.alerts) {
       transformed.alerts = configData.alerts;
     }
@@ -291,6 +295,7 @@ export class DBDockConfigService {
         to: this.nestConfig.get<string>('ALERT_EMAILS')?.split(','),
         slackWebhook: this.nestConfig.get<string>('DBDOCK_SLACK_WEBHOOK') ||
           this.nestConfig.get<string>('SLACK_WEBHOOK'),
+        customWebhook: this.nestConfig.get<string>('DBDOCK_CUSTOM_WEBHOOK'),
       },
     };
   }
@@ -382,16 +387,29 @@ export class DBDockConfigService {
   }
 
   private validateStorageProvider(config: DBDockConfig): void {
-    const { provider, accessKeyId, secretAccessKey, endpoint, localPath } =
+    const { provider, accessKeyId, secretAccessKey, endpoint, localPath, cloudinaryCloudName, cloudinaryApiKey, cloudinaryApiSecret } =
       config.storage;
 
     if (
-      (provider === 's3' || provider === 'r2' || provider === 'cloudinary') &&
+      (provider === 's3' || provider === 'r2') &&
       (!accessKeyId || !secretAccessKey)
     ) {
       this.handleError(
         `❌ DBDock Configuration Error:\n\n  • storage.accessKeyId and storage.secretAccessKey are required for ${provider} provider\n\nPlease check your dbdock.config.json or environment variables.`,
       );
+    }
+
+    if (provider === 'cloudinary') {
+      if (!cloudinaryApiKey || !cloudinaryApiSecret) {
+        this.handleError(
+          `❌ DBDock Configuration Error:\n\n  • storage.cloudinaryApiKey and storage.cloudinaryApiSecret are required for cloudinary provider\n\nSet via DBDOCK_CLOUDINARY_API_KEY and DBDOCK_CLOUDINARY_API_SECRET environment variables.`,
+        );
+      }
+      if (!cloudinaryCloudName) {
+        this.handleError(
+          `❌ DBDock Configuration Error:\n\n  • storage.cloudinaryCloudName is required for cloudinary provider\n\nPlease check your dbdock.config.json or environment variables.`,
+        );
+      }
     }
 
     if ((provider === 's3' || provider === 'r2') && !endpoint) {
@@ -414,10 +432,10 @@ export class DBDockConfigService {
   }
 
   private handleError(message: string): void {
-    if (process.env.NODE_ENV === 'test') {
+    if (process.env.NODE_ENV === 'test' || process.env.DBDOCK_LIBRARY_MODE === 'true') {
       throw new Error(message);
     }
-    console.error('\x1b[31m%s\x1b[0m', message); // Red color
+    console.error('\x1b[31m%s\x1b[0m', message);
     process.exit(1);
   }
 }

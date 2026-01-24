@@ -147,6 +147,10 @@ class AlertsConfig {
   @IsString()
   @IsOptional()
   slackWebhook?: string;
+
+  @IsString()
+  @IsOptional()
+  customWebhook?: string;
 }
 
 export class DBDockConfig {

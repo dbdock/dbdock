@@ -74,8 +74,7 @@ export class CloudinaryStorageAdapter implements IStorageAdapter {
 
   async downloadStream(options: DownloadOptions): Promise<Readable> {
     try {
-      const { default: fetch } = await import('node-fetch');
-      const { PassThrough } = await import('stream');
+      const { Readable: NodeReadable } = await import('stream');
 
       const url = cloudinary.url(options.key, {
         resource_type: 'raw',
@@ -92,10 +91,7 @@ export class CloudinaryStorageAdapter implements IStorageAdapter {
         throw new Error('No response body received from Cloudinary');
       }
 
-      const passThrough = new PassThrough();
-      response.body.pipe(passThrough);
-
-      return passThrough;
+      return NodeReadable.fromWeb(response.body as import('stream/web').ReadableStream);
     } catch (error) {
       const friendlyMessage = this.getFriendlyError(error);
       this.logger.error(`Failed to download ${options.key}: ${friendlyMessage}`);

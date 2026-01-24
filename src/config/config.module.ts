@@ -7,7 +7,7 @@ import { DBDockConfigService } from './config.service';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env.local', '.env'],
+      envFilePath: ['.env', '.env.local'],
     }),
   ],
   providers: [DBDockConfigService],

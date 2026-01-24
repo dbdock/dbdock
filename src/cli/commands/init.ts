@@ -17,7 +17,7 @@ import {
 import { join } from 'path';
 import { ENV_VAR_MAPPING } from '../../config/secrets.validator';
 
-const ENV_LOCAL_FILE = '.env.local';
+const ENV_FILE = '.env';
 
 Logger.overrideLogger(false);
 
@@ -109,7 +109,7 @@ export async function initCommand(): Promise<void> {
     {
       type: 'password',
       name: 'password',
-      message: 'Database password:',
+      message: 'Database password (press Enter to skip and set via DBDOCK_DB_PASSWORD env var):',
     },
     {
       type: 'input',
@@ -202,14 +202,14 @@ export async function initCommand(): Promise<void> {
     {
       type: 'input',
       name: 's3AccessKey',
-      message: 'Access key ID:',
+      message: 'Access key ID (press Enter to skip and set via DBDOCK_STORAGE_ACCESS_KEY env var):',
       when: (answers: InitAnswers) =>
         answers.storageProvider === 's3' || answers.storageProvider === 'r2',
     },
     {
       type: 'password',
       name: 's3SecretKey',
-      message: 'Secret access key:',
+      message: 'Secret access key (press Enter to skip and set via DBDOCK_STORAGE_SECRET_KEY env var):',
       when: (answers: InitAnswers) =>
         answers.storageProvider === 's3' || answers.storageProvider === 'r2',
     },
@@ -222,13 +222,13 @@ export async function initCommand(): Promise<void> {
     {
       type: 'input',
       name: 'cloudinaryApiKey',
-      message: 'Cloudinary API key:',
+      message: 'Cloudinary API key (press Enter to skip and set via DBDOCK_CLOUDINARY_API_KEY env var):',
       when: (answers: InitAnswers) => answers.storageProvider === 'cloudinary',
     },
     {
       type: 'password',
       name: 'cloudinaryApiSecret',
-      message: 'Cloudinary API secret:',
+      message: 'Cloudinary API secret (press Enter to skip and set via DBDOCK_CLOUDINARY_API_SECRET env var):',
       when: (answers: InitAnswers) => answers.storageProvider === 'cloudinary',
     },
     {
@@ -241,9 +241,10 @@ export async function initCommand(): Promise<void> {
       type: 'input',
       name: 'encryptionKey',
       message:
-        'Create your encryption key (64-char hex, run: openssl rand -hex 32):',
+        'Encryption key (64-char hex, run: openssl rand -hex 32, press Enter to skip and set via DBDOCK_ENCRYPTION_SECRET env var):',
       when: (answers: InitAnswers) => answers.enableEncryption,
       validate: (input: string) => {
+        if (!input.trim()) return true;
         if (!/^[0-9a-fA-F]{64}$/.test(input)) {
           return 'Encryption key must be a 64-character hexadecimal string. Generate with: openssl rand -hex 32';
         }
@@ -358,33 +359,22 @@ export async function initCommand(): Promise<void> {
     {
       type: 'input',
       name: 'smtpUser',
-      message: 'SMTP username/email:',
+      message: 'SMTP username/email (press Enter to skip):',
       when: (answers: InitAnswers) => answers.enableEmailAlerts,
-      validate: (input: string) => {
-        if (!input.trim()) {
-          return 'SMTP username is required';
-        }
-        return true;
-      },
     },
     {
       type: 'password',
       name: 'smtpPassword',
-      message: 'SMTP password/app password:',
+      message: 'SMTP password/app password (press Enter to skip):',
       when: (answers: InitAnswers) => answers.enableEmailAlerts,
-      validate: (input: string) => {
-        if (!input.trim()) {
-          return 'SMTP password is required';
-        }
-        return true;
-      },
     },
     {
       type: 'input',
       name: 'emailFrom',
-      message: 'From email address:',
+      message: 'From email address (press Enter to skip):',
       when: (answers: InitAnswers) => answers.enableEmailAlerts,
       validate: (input: string) => {
+        if (!input.trim()) return true;
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(input)) {
           return 'Please enter a valid email address';
@@ -395,9 +385,10 @@ export async function initCommand(): Promise<void> {
     {
       type: 'input',
       name: 'emailTo',
-      message: 'To email address(es) (comma-separated):',
+      message: 'To email address(es) (comma-separated, press Enter to skip):',
       when: (answers: InitAnswers) => answers.enableEmailAlerts,
       validate: (input: string) => {
+        if (!input.trim()) return true;
         const emails = input.split(',').map((e) => e.trim());
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         const allValid = emails.every((email) => emailRegex.test(email));
@@ -410,9 +401,10 @@ export async function initCommand(): Promise<void> {
     {
       type: 'input',
       name: 'slackWebhook',
-      message: 'Slack Webhook URL:',
+      message: 'Slack Webhook URL (press Enter to skip):',
       when: (answers: InitAnswers) => answers.enableSlackAlerts,
       validate: (input: string) => {
+        if (!input.trim()) return true;
         if (!input.trim().startsWith('https://hooks.slack.com/services/')) {
           return 'Please enter a valid Slack Webhook URL (starts with https://hooks.slack.com/services/)';
         }
@@ -527,7 +519,7 @@ export async function initCommand(): Promise<void> {
 
   if (Object.keys(secrets).length > 0) {
     saveSecretsToEnvFile(secrets);
-    logger.success(`Secrets saved to ${ENV_LOCAL_FILE}`);
+    logger.success(`Secrets saved to ${ENV_FILE}`);
   }
 
   if (config.storage.provider === 'local' && config.storage.local?.path) {
@@ -539,12 +531,9 @@ export async function initCommand(): Promise<void> {
   }
 
   const gitignoreStatus = updateGitignore(config, Object.keys(secrets).length > 0);
-  if (gitignoreStatus.configUpdated) {
-    logger.success(`${CONFIG_FILE} added to .gitignore`);
-  } else if (gitignoreStatus.configAlreadyExists) {
-    logger.info(`${CONFIG_FILE} is already in .gitignore`);
-  } else if (gitignoreStatus.created) {
-    logger.success(`.gitignore created with ${CONFIG_FILE}`);
+
+  if (gitignoreStatus.created) {
+    logger.success(`.gitignore created`);
   }
 
   if (gitignoreStatus.localPathUpdated) {
@@ -553,10 +542,10 @@ export async function initCommand(): Promise<void> {
     logger.info(`${config.storage.local?.path} is already in .gitignore`);
   }
 
-  if (gitignoreStatus.envLocalUpdated) {
-    logger.success(`${ENV_LOCAL_FILE} added to .gitignore`);
-  } else if (gitignoreStatus.envLocalAlreadyExists) {
-    logger.info(`${ENV_LOCAL_FILE} is already in .gitignore`);
+  if (gitignoreStatus.envUpdated) {
+    logger.success(`${ENV_FILE} added to .gitignore`);
+  } else if (gitignoreStatus.envAlreadyExists) {
+    logger.info(`${ENV_FILE} is already in .gitignore`);
   }
 
   if (answers.enableEmailAlerts || answers.enableSlackAlerts) {
@@ -571,8 +560,8 @@ export async function initCommand(): Promise<void> {
   if (Object.keys(secrets).length > 0) {
     logger.info('\n🔐 Security Configuration:');
     logger.log(`  - Non-sensitive config saved to: ${CONFIG_FILE} (safe for version control)`);
-    logger.log(`  - Secrets saved to: ${ENV_LOCAL_FILE} (DO NOT commit this file)`);
-    logger.log('  - Both files have been added to .gitignore');
+    logger.log(`  - Secrets saved to: ${ENV_FILE} (DO NOT commit this file)`);
+    logger.log(`  - ${ENV_FILE} has been added to .gitignore`);
   }
 
   logger.info('\nNext steps:');
@@ -659,7 +648,7 @@ function removeSecretsFromConfig(config: CLIConfig): CLIConfig {
 }
 
 function saveSecretsToEnvFile(secrets: SecretsMap): void {
-  const envPath = join(process.cwd(), ENV_LOCAL_FILE);
+  const envPath = join(process.cwd(), ENV_FILE);
 
   const lines = [
     '# DBDock Secrets - DO NOT COMMIT THIS FILE',
@@ -677,19 +666,16 @@ function saveSecretsToEnvFile(secrets: SecretsMap): void {
 }
 
 interface GitignoreStatus {
-  configUpdated: boolean;
-  configAlreadyExists: boolean;
   localPathUpdated: boolean;
   localPathAlreadyExists: boolean;
-  envLocalUpdated: boolean;
-  envLocalAlreadyExists: boolean;
+  envUpdated: boolean;
+  envAlreadyExists: boolean;
   created: boolean;
 }
 
 function updateGitignore(config: CLIConfig, hasSecrets: boolean = false): GitignoreStatus {
   const gitignorePath = join(process.cwd(), '.gitignore');
-  const configEntry = CONFIG_FILE;
-  const entriesToAdd: string[] = [configEntry];
+  const entriesToAdd: string[] = [];
 
   if (config.storage.provider === 'local' && config.storage.local?.path) {
     const localPath = config.storage.local.path;
@@ -698,29 +684,27 @@ function updateGitignore(config: CLIConfig, hasSecrets: boolean = false): Gitign
   }
 
   if (hasSecrets) {
-    entriesToAdd.push(ENV_LOCAL_FILE);
-    entriesToAdd.push('.env');
+    entriesToAdd.push(ENV_FILE);
   }
 
   const status: GitignoreStatus = {
-    configUpdated: false,
-    configAlreadyExists: false,
     localPathUpdated: false,
     localPathAlreadyExists: false,
-    envLocalUpdated: false,
-    envLocalAlreadyExists: false,
+    envUpdated: false,
+    envAlreadyExists: false,
     created: false,
   };
 
   if (!existsSync(gitignorePath)) {
-    writeFileSync(gitignorePath, entriesToAdd.join('\n') + '\n');
-    status.created = true;
-    status.configUpdated = true;
-    if (config.storage.provider === 'local' && config.storage.local?.path) {
-      status.localPathUpdated = true;
-    }
-    if (hasSecrets) {
-      status.envLocalUpdated = true;
+    if (entriesToAdd.length > 0) {
+      writeFileSync(gitignorePath, entriesToAdd.join('\n') + '\n');
+      status.created = true;
+      if (config.storage.provider === 'local' && config.storage.local?.path) {
+        status.localPathUpdated = true;
+      }
+      if (hasSecrets) {
+        status.envUpdated = true;
+      }
     }
     return status;
   }
@@ -740,9 +724,6 @@ function updateGitignore(config: CLIConfig, hasSecrets: boolean = false): Gitign
     });
   };
 
-  const configAlreadyIgnored = isEntryIgnored(configEntry);
-  status.configAlreadyExists = configAlreadyIgnored;
-
   let localPathAlreadyIgnored = false;
   if (config.storage.provider === 'local' && config.storage.local?.path) {
     const normalizedPath = config.storage.local.path.replace(/^\.\//, '').replace(/\/$/, '');
@@ -750,17 +731,13 @@ function updateGitignore(config: CLIConfig, hasSecrets: boolean = false): Gitign
     status.localPathAlreadyExists = localPathAlreadyIgnored;
   }
 
-  let envLocalAlreadyIgnored = false;
+  let envAlreadyIgnored = false;
   if (hasSecrets) {
-    envLocalAlreadyIgnored = isEntryIgnored(ENV_LOCAL_FILE) || isEntryIgnored('.env');
-    status.envLocalAlreadyExists = envLocalAlreadyIgnored;
+    envAlreadyIgnored = isEntryIgnored(ENV_FILE);
+    status.envAlreadyExists = envAlreadyIgnored;
   }
 
   const newEntries: string[] = [];
-  if (!configAlreadyIgnored) {
-    newEntries.push(configEntry);
-    status.configUpdated = true;
-  }
 
   if (config.storage.provider === 'local' && config.storage.local?.path && !localPathAlreadyIgnored) {
     const normalizedPath = config.storage.local.path.replace(/^\.\//, '').replace(/\/$/, '');
@@ -768,10 +745,9 @@ function updateGitignore(config: CLIConfig, hasSecrets: boolean = false): Gitign
     status.localPathUpdated = true;
   }
 
-  if (hasSecrets && !envLocalAlreadyIgnored) {
-    newEntries.push(ENV_LOCAL_FILE);
-    newEntries.push('.env');
-    status.envLocalUpdated = true;
+  if (hasSecrets && !envAlreadyIgnored) {
+    newEntries.push(ENV_FILE);
+    status.envUpdated = true;
   }
 
   if (newEntries.length > 0) {

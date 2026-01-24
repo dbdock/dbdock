@@ -11,6 +11,13 @@ import { deleteCommand } from './commands/delete';
 import { cleanupCommand } from './commands/cleanup';
 import { statusCommand } from './commands/status';
 import { migrateConfigCommand } from './commands/migrate-config';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+const packageJson = JSON.parse(
+  readFileSync(join(__dirname, '../../package.json'), 'utf-8')
+);
+const version = packageJson.version;
 
 process.on('SIGINT', () => {
   console.log('\n\nOperation cancelled by user');
@@ -27,7 +34,7 @@ const program = new Command();
 program
   .name('dbdock')
   .description('Enterprise-grade database backup and restore tool')
-  .version('1.0.0');
+  .version(version);
 
 program
   .command('init')

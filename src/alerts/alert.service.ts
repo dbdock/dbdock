@@ -11,8 +11,6 @@ import {
 import { DEFAULT_TEMPLATES, renderTemplate } from './alert-templates';
 import { BackupMetadata } from '../backup/backup.types';
 
-import fetch from 'node-fetch';
-
 @Injectable()
 export class AlertService {
   private readonly logger = new Logger(AlertService.name);
@@ -55,6 +53,10 @@ export class AlertService {
 
     if (alertsConfig.slackWebhook) {
       this.logger.log('Slack alerts enabled');
+    }
+
+    if (alertsConfig.customWebhook) {
+      this.logger.log('Custom webhook alerts enabled');
     }
   }
 
@@ -178,6 +180,18 @@ export class AlertService {
         );
       }
     }
+
+    // Send Custom Webhook Alert
+    if (alertsConfig.customWebhook) {
+      try {
+        await this.sendCustomWebhookAlert(alertsConfig.customWebhook, alertContext);
+        this.logger.log(`Custom webhook alert sent: ${alertContext.type}`);
+      } catch (error) {
+        this.logger.error(
+          `Failed to send custom webhook alert (${alertContext.type}): ${(error as Error).message}`,
+        );
+      }
+    }
   }
 
   private async sendSlackAlert(webhookUrl: string, context: AlertContext): Promise<void> {
@@ -234,6 +248,52 @@ export class AlertService {
 
     if (!response.ok) {
       throw new Error(`Slack API error: ${response.statusText}`);
+    }
+  }
+
+  private async sendCustomWebhookAlert(
+    webhookUrl: string,
+    context: AlertContext,
+  ): Promise<void> {
+    const statusMap: Record<AlertType, string> = {
+      [AlertType.BACKUP_SUCCESS]: 'success',
+      [AlertType.BACKUP_FAILURE]: 'failure',
+      [AlertType.RETENTION_CLEANUP]: 'info',
+      [AlertType.STORAGE_ERROR]: 'warning',
+    };
+
+    const payload = {
+      event: context.type,
+      timestamp: new Date().toISOString(),
+      status: statusMap[context.type],
+      database: context.metadata?.database || context.details?.database,
+      backupId: context.metadata?.id || context.details?.backupId,
+      message: this.getAlertMessage(context),
+      details: context.details || {},
+      downloadUrl: context.downloadUrl,
+    };
+
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Webhook error: ${response.status} ${response.statusText}`);
+    }
+  }
+
+  private getAlertMessage(context: AlertContext): string {
+    switch (context.type) {
+      case AlertType.BACKUP_SUCCESS:
+        return `Backup completed successfully for database ${context.details?.database}`;
+      case AlertType.BACKUP_FAILURE:
+        return `Backup failed for database ${context.details?.database}: ${context.details?.error}`;
+      case AlertType.RETENTION_CLEANUP:
+        return `Retention cleanup: ${context.details?.backupsDeleted} backups deleted`;
+      case AlertType.STORAGE_ERROR:
+        return `Storage error: ${context.details?.error}`;
     }
   }
 
