@@ -55,7 +55,7 @@ async function testDatabaseConnection(config: any): Promise<void> {
   const psqlArgs = [
     '-h', dbConfig.host || 'localhost',
     '-p', String(dbConfig.port || 5432),
-    '-U', dbConfig.username || 'postgres',
+    '-U', dbConfig.user || dbConfig.username || process.env.DBDOCK_DB_USER || 'postgres',
     '-d', dbConfig.database || 'postgres',
     '-c', 'SELECT 1',
     '--no-password',
@@ -63,7 +63,7 @@ async function testDatabaseConnection(config: any): Promise<void> {
 
   const env = {
     ...process.env,
-    PGPASSWORD: dbConfig.password,
+    PGPASSWORD: dbConfig.password || process.env.DBDOCK_DB_PASSWORD,
   };
 
   return new Promise<void>((resolve, reject) => {

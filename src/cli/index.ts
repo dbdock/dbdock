@@ -11,6 +11,7 @@ import { deleteCommand } from './commands/delete';
 import { cleanupCommand } from './commands/cleanup';
 import { statusCommand } from './commands/status';
 import { migrateConfigCommand } from './commands/migrate-config';
+import { copydbCommand } from './commands/copydb';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -99,5 +100,15 @@ program
   .command('status')
   .description('View configured backup schedules')
   .action(statusCommand);
+
+program
+  .command('copydb')
+  .description('Copy a PostgreSQL database from one URL to another')
+  .argument('<source>', 'Source PostgreSQL URL (postgresql://user:pass@host:port/db)')
+  .argument('<target>', 'Target PostgreSQL URL (postgresql://user:pass@host:port/db)')
+  .option('--schema-only', 'Copy schema only (no data)')
+  .option('--data-only', 'Copy data only (no schema)')
+  .option('--verbose', 'Show detailed pg_dump/pg_restore output')
+  .action(copydbCommand);
 
 program.parse();

@@ -3,7 +3,11 @@ import * as path from 'path';
 import * as dotenv from 'dotenv';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
-dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: true });
+
+const envLocalPath = path.join(process.cwd(), '.env.local');
+if (fs.existsSync(envLocalPath)) {
+  dotenv.config({ path: envLocalPath, override: true });
+}
 
 export const SENSITIVE_FIELDS = [
   'postgres.password',

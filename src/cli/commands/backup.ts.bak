@@ -3,6 +3,7 @@ import { loadConfig, CLIConfig } from '../utils/config';
 import { logger } from '../utils/logger';
 import { createBackupStandalone } from '../../standalone/backup-standalone';
 import { Logger } from '@nestjs/common';
+import { ProgressTracker } from '../utils/progress';
 import { applyRetention, formatRetentionStats } from '../utils/retention';
 import { LocalStorageAdapter } from '../../storage/adapters/local.adapter';
 import { S3StorageAdapter } from '../../storage/adapters/s3.adapter';
@@ -56,24 +57,22 @@ export async function backupCommand(options: BackupOptions): Promise<void> {
 
     spinner.succeed('Configuration validated');
 
-    spinner.start('Creating backup...');
-    let totalBytes = 0;
-    let currentStage = 'Dumping database';
+    const progress = new ProgressTracker();
+    let currentStage = 'Starting';
+
+    progress.start(100, 'Preparing backup');
 
     const result = await createBackupStandalone(mergedConfig, {
       onProgress: (bytes) => {
-        totalBytes = bytes;
-        const mb = (bytes / 1024 / 1024).toFixed(2);
-        spinner.text = `${currentStage} (${mb} MB)`;
+        const mb = bytes / 1024 / 1024;
+        progress.update(Math.min(mb, 100), currentStage);
       },
       onStage: (stage) => {
         currentStage = stage;
-        const mb = totalBytes > 0 ? (totalBytes / 1024 / 1024).toFixed(2) : '0.00';
-        spinner.text = `${stage} (${mb} MB)`;
       },
     });
 
-    spinner.succeed('Backup complete');
+    progress.stop('Backup complete');
     console.log('');
     logger.success('Backup completed successfully');
     
@@ -93,13 +92,7 @@ export async function backupCommand(options: BackupOptions): Promise<void> {
     }, result.downloadUrl);
 
     logger.success(`Backup ID: ${result.backupId}`);
-
-    if (result.downloadUrl) {
-      console.log('');
-      logger.info('Download URL (valid for 7 days):');
-      logger.info(result.downloadUrl);
-      console.log('');
-    }
+    // ... logging ...
 
   } catch (error) {
     spinner.fail('Backup failed');

@@ -477,7 +477,7 @@ interface MigrationDetailsAnswer {
       '-p',
       String(targetDbConfig.port || 5432),
       '-U',
-      targetDbConfig.username || 'postgres',
+      targetDbConfig.user || targetDbConfig.username || process.env.DBDOCK_DB_USER || 'postgres',
       '-d',
       targetDbConfig.database || 'postgres',
       '-F',
@@ -491,7 +491,7 @@ interface MigrationDetailsAnswer {
 
     const env = {
       ...process.env,
-      PGPASSWORD: targetDbConfig.password,
+      PGPASSWORD: targetDbConfig.password || process.env.DBDOCK_DB_PASSWORD,
     };
 
     let stream: Readable | Transform;
@@ -689,7 +689,7 @@ async function getCurrentDatabaseStats(
     '-p',
     String(dbConfig.port || 5432),
     '-U',
-    dbConfig.username || 'postgres',
+    dbConfig.user || dbConfig.username || process.env.DBDOCK_DB_USER || 'postgres',
     '-d',
     dbConfig.database || 'postgres',
     '-t',
@@ -698,7 +698,7 @@ async function getCurrentDatabaseStats(
 
   const env = {
     ...process.env,
-    PGPASSWORD: dbConfig.password,
+    PGPASSWORD: dbConfig.password || process.env.DBDOCK_DB_PASSWORD,
   };
 
   const results = await Promise.all(
