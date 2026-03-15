@@ -1,6 +1,6 @@
 {
   "name": "dbdock",
-  "version": "1.1.15",
+  "version": "1.1.16",
   "description": "Enterprise-grade PostgreSQL backup and restore in under 60 seconds. CLI-first tool with encryption, compression, and multi-cloud storage.",
   "author": "Naheem Olaide <naheemolaide@gmail.com>",
   "private": false,
