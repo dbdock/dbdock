@@ -12,6 +12,8 @@ import { cleanupCommand } from './commands/cleanup';
 import { statusCommand } from './commands/status';
 import { migrateConfigCommand } from './commands/migrate-config';
 import { copydbCommand } from './commands/copydb';
+import { analyzeCommand } from './commands/analyze';
+import { crossMigrateCommand } from './commands/cross-migrate';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -110,5 +112,25 @@ program
   .option('--data-only', 'Copy data only (no schema)')
   .option('--verbose', 'Show detailed pg_dump/pg_restore output')
   .action(copydbCommand);
+
+program
+  .command('analyze')
+  .description('Analyze a database structure (MongoDB or PostgreSQL)')
+  .argument('<url>', 'Database connection URL (mongodb:// or postgresql://)')
+  .action(analyzeCommand);
+
+program
+  .command('migrate')
+  .description('Cross-database migration between MongoDB and PostgreSQL')
+  .argument('<source>', 'Source database URL')
+  .argument('<target>', 'Target database URL')
+  .option('--dry-run', 'Run migration into temporary schema for validation')
+  .option('--incremental', 'Only migrate new/changed data')
+  .option('--since <date>', 'Incremental cutoff date (ISO format)')
+  .option('--config <path>', 'Use a saved migration config file')
+  .option('--export-config <path>', 'Export migration plan to config file')
+  .option('--batch-size <number>', 'Documents per batch (default: 1000)', parseInt)
+  .option('--max-depth <number>', 'Max nesting depth before jsonb (default: 2)', parseInt)
+  .action(crossMigrateCommand);
 
 program.parse();

@@ -1,6 +1,6 @@
 # DBDock
 
-Stop writing backup scripts. Stop losing sleep over database migrations. DBDock handles PostgreSQL backups, restores, and database copies in one command.
+Stop writing backup scripts. Stop losing sleep over database migrations. DBDock handles PostgreSQL backups, restores, database copies, and cross-database migrations between MongoDB and PostgreSQL in one command.
 
 [![npm version](https://img.shields.io/npm/v/dbdock.svg)](https://www.npmjs.com/package/dbdock)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -20,13 +20,14 @@ It's not hard. It's just repetitive. And repetitive stuff should be one command.
 ## The Fix
 
 ```bash
-npx dbdock init                          # One-time setup (takes 30 seconds)
-npx dbdock backup                        # Backup with encryption + compression
-npx dbdock restore                       # Restore from any backup
-npx dbdock copydb "db_url_1" "db_url_2"  # Copy entire database, zero config
+npx dbdock init                              # One-time setup (takes 30 seconds)
+npx dbdock backup                            # Backup with encryption + compression
+npx dbdock restore                           # Restore from any backup
+npx dbdock copydb "db_url_1" "db_url_2"      # Copy entire database, zero config
+npx dbdock migrate "mongo_url" "postgres_url" # Cross-database migration
 ```
 
-That's it. No shell scripts. No manual uploads. No config files for `copydb`.
+That's it. No shell scripts. No manual uploads. No throwaway migration code.
 
 ---
 
@@ -255,6 +256,221 @@ npx dbdock migrate-config
 ```
 
 Got secrets sitting in `dbdock.config.json` from an older version? This extracts them to `.env`, cleans up your config, and updates `.gitignore`. One command, done.
+
+---
+
+## Cross-Database Migration (MongoDB ↔ PostgreSQL)
+
+Move your data between MongoDB and PostgreSQL without writing throwaway scripts. DBDock analyzes the source, proposes a schema mapping, lets you review it, and handles the transfer.
+
+### `dbdock analyze` — Understand your database first
+
+```bash
+npx dbdock analyze "mongodb://localhost:27017/myapp"
+npx dbdock analyze "postgresql://user:pass@localhost:5432/myapp"
+```
+
+Scans the source database and shows you everything — collections/tables, field types, nested structures, inconsistencies (like a `price` field that's a string in 200 docs and a number in 15,000), and missing fields.
+
+```
+  DBDock - Database Analysis
+  ─  ─  ─  ─  ─  ─  ─  ─  ─  ─  ─  ─  ─  ─  ─  ─
+
+ℹ Database: MongoDB — myapp
+ℹ Host: localhost:27017
+
+✓ Analysis complete
+
+  Found 4 collections, 57.2K total documents
+
+  users (45K docs)
+  ├─ _id (objectId)
+  ├─ name (string)
+  ├─ email (string)
+  ├─ address (object)
+  │   ├─ street (string)
+  │   ├─ city (string)
+  │   └─ zip (string)
+  ├─ phone (string) [62% present]
+  └─ orders (array: object)
+
+  products (12K docs)
+  ├─ _id (objectId)
+  ├─ title (string)
+  ├─ price (string(203), number(11797)) ⚠ mixed types
+  ├─ tags (array: string)
+  └─ meta (object)
+```
+
+---
+
+### `dbdock migrate` — Cross-database migration
+
+```bash
+npx dbdock migrate "mongodb://localhost:27017/myapp" "postgresql://user:pass@localhost:5432/myapp"
+```
+
+DBDock analyzes the source, generates a schema mapping proposal, and presents it for review before touching anything:
+
+```
+  DBDock - Cross-Database Migration
+  ─  ─  ─  ─  ─  ─  ─  ─  ─  ─  ─  ─  ─  ─  ─  ─  ─  ─  ─  ─  ─
+
+ℹ Source: MongoDB — myapp
+ℹ Target: PostgreSQL — myapp
+
+✓ Source analyzed: 4 collections, 57.2K documents
+
+  Proposed Schema Mapping:
+
+  users → users
+  ├─ _id → (uuid_from_objectid) users.id (uuid) PK
+  ├─ name → users.name (text)
+  ├─ email → users.email (text)
+  ├─ address {} → user_addresses (1:1 relation)
+  │   ├─ street → street (text)
+  │   ├─ city → city (text)
+  │   └─ zip → zip (text)
+  ├─ orders [] → user_orders child table
+
+  products → products
+  ├─ _id → (uuid_from_objectid) products.id (uuid) PK
+  ├─ title → products.title (text)
+  ├─ price → products.price (numeric) nullable
+  ├─ tags [] → product_tags text[]
+  ├─ meta {} → products.meta (jsonb)
+
+  ⚠ Conflicts Found:
+
+  • products.price: string in 203 docs, number in 11797 docs
+    → Suggestion: cast to numeric, log failures
+
+  • users.phone: missing in 38.0% of documents
+    → Suggestion: nullable column
+
+? Accept mapping? (Y / export / cancel)
+```
+
+You review the mapping, then choose: execute it, export it as a config file to tweak, or cancel.
+
+---
+
+### What it handles
+
+| Scenario | How DBDock handles it |
+|---|---|
+| **Nested objects** | Consistent shape → flattened to a related table. Varying/messy → kept as `jsonb` column |
+| **Arrays of primitives** | `tags: ["a", "b"]` → PostgreSQL array column or junction table |
+| **Arrays of objects** | `orders: [{item, qty}]` → child table with foreign key back to parent |
+| **Missing fields** | Detects frequency across all documents, makes sparse fields nullable |
+| **Type mismatches** | Same field with different types → casts to majority type, logs failures to `_migration_errors` |
+| **ObjectId references** | Auto-detects `userId: ObjectId(...)` patterns → creates proper foreign keys |
+| **Deep nesting** | Flattens up to configurable depth (default: 2), stores deeper levels as `jsonb` |
+| **Postgres → Mongo** | 1:1 joins → embedded objects. Small 1:many → embedded arrays. Large 1:many → separate collections with refs |
+| **Many-to-many** | Junction tables → arrays of values in the document |
+
+---
+
+### The reverse — PostgreSQL to MongoDB
+
+```bash
+npx dbdock migrate "postgresql://user:pass@localhost:5432/myapp" "mongodb://localhost:27017/myapp"
+```
+
+DBDock detects table relationships and proposes embedding vs referencing strategies:
+
+```
+  Proposed Document Mapping:
+
+  users → users collection
+  ├─ id → _id
+  ├─ name → name
+  ├─ email → email
+  ├─ addresses → embed object as address
+  ├─ orders → embed array as orders (< 1000 rows)
+
+  products → products collection
+  ├─ id → _id
+  ├─ title → title
+  ├─ price → price
+  ├─ product_tags → embed as tags array
+```
+
+Small 1:1 and 1:many relations get embedded. Large 1:many relations stay as separate collections with reference fields. You can override per table.
+
+---
+
+### Dry run & validation
+
+```bash
+npx dbdock migrate --dry-run "mongodb://..." "postgresql://..."
+```
+
+Runs the full migration into a temporary schema, validates counts and referential integrity, then cleans up. Nothing touches the real target:
+
+```
+  Dry Run Results:
+  ─  ─  ─  ─  ─  ─  ─  ─  ─  ─
+  ✔ users:        45,000 → 45,000
+  ✔ addresses:    45,000 → 44,998 (2 failed)
+  ✔ orders:      312,400 → 312,400
+  ✔ products:     12,000 → 12,000
+  ✔ product_tags: 38,200 → 38,200
+
+  ⚠ 2 rows failed (see _migration_errors)
+  ✓ All foreign keys valid — dry run passed
+```
+
+---
+
+### Incremental / delta migration
+
+Already migrated once but your app is still running on the old database? Sync only new or changed data:
+
+```bash
+npx dbdock migrate --incremental --since "2026-03-10" "mongodb://..." "postgresql://..."
+```
+
+Uses `createdAt`/`updatedAt` timestamps to only transfer new and changed documents. Existing rows in the target are upserted.
+
+---
+
+### Save & reuse config
+
+Export the mapping for your team to use reproducibly:
+
+```bash
+npx dbdock migrate --export-config ./migration.yaml "mongodb://..." "postgresql://..."
+```
+
+Then anyone runs the same migration:
+
+```bash
+npx dbdock migrate --config ./migration.yaml "mongodb://..." "postgresql://..."
+```
+
+Tweak the YAML/JSON config to adjust type mappings, embedding strategies, or rename target tables — then re-run.
+
+---
+
+### Migration options
+
+| Flag | What it does |
+|---|---|
+| `--dry-run` | Migrate into temp schema, validate, clean up |
+| `--incremental` | Only sync new/changed data |
+| `--since <date>` | Cutoff date for incremental mode (ISO format) |
+| `--config <path>` | Load a saved migration config (YAML or JSON) |
+| `--export-config <path>` | Save migration plan to file without executing |
+| `--batch-size <n>` | Documents per batch (default: 1000) |
+| `--max-depth <n>` | Max nesting depth before storing as jsonb (default: 2) |
+
+### Core principles
+
+- **Never lose data** — failed rows go to `_migration_errors`, never silently dropped
+- **Never surprise the user** — full mapping shown before execution, conflicts flagged
+- **Always let you review** — nothing executes without explicit confirmation
+- **Reproducible** — export/import configs for team-wide consistency
 
 ---
 
