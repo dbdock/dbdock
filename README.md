@@ -73,6 +73,8 @@ It asks for your database connection, picks your storage (Local, S3, R2, Cloudin
 - Config (safe stuff) goes to `dbdock.config.json` — commit this
 - Secrets go to `.env` — never committed, `.gitignore` updated automatically
 
+You can also run **without a config file**: set `DBDOCK_DB_URL` (or `DATABASE_URL`) and other env vars and DBDock will use env-only configuration.
+
 ---
 
 ### `dbdock backup` — One command, full backup
@@ -543,13 +545,20 @@ DBDock splits your config into two parts by design:
 
 | What | Where | Git safe? |
 |------|-------|-----------|
-| Host, port, bucket names, settings | `dbdock.config.json` | Yes |
-| Passwords, API keys, secrets | `.env` | No (auto-gitignored) |
+| Host, port, bucket names, settings | `dbdock.config.json` or env | Yes (if in config) |
+| Passwords, API keys, secrets | `.env` or `DBDOCK_DB_URL` | No (auto-gitignored) |
 
 ### Environment Variables
 
+Use either a **full database URL** or **separate credentials**:
+
 ```bash
-DBDOCK_DB_PASSWORD=your-database-password           # Required
+# Option 1: Full URL (env-only config, no password var needed)
+DBDOCK_DB_URL=postgresql://user:password@host:5432/database
+# or DATABASE_URL=postgresql://user:password@host:5432/database
+
+# Option 2: Separate credentials (with or without dbdock.config.json)
+DBDOCK_DB_PASSWORD=your-database-password           # Required if not using URL
 DBDOCK_STORAGE_ACCESS_KEY=your-access-key            # For cloud storage
 DBDOCK_STORAGE_SECRET_KEY=your-secret-key            # For cloud storage
 DBDOCK_ENCRYPTION_SECRET=64-char-hex-string          # If encryption enabled
@@ -558,7 +567,7 @@ DBDOCK_SMTP_PASS=your-app-password                   # For email alerts
 DBDOCK_SLACK_WEBHOOK=https://hooks.slack.com/...     # For Slack alerts
 ```
 
-Reads from both `.env` and `.env.local` (`.env.local` takes priority).
+When `DBDOCK_DB_URL` or `DATABASE_URL` is set, it overrides database settings from `dbdock.config.json`. You can run with **env-only** (no config file) by setting the URL plus storage/encryption/alert vars in `.env`. Reads from both `.env` and `.env.local` (`.env.local` takes priority).
 
 ### .pgpass Support
 
@@ -647,7 +656,7 @@ Don't just use the CLI — drop DBDock into your Node.js app and trigger backups
 npm install dbdock
 ```
 
-Make sure `dbdock.config.json` exists (run `npx dbdock init` first).
+Use `dbdock.config.json` (run `npx dbdock init`) or configure entirely via env vars (`DBDOCK_DB_URL` / `DATABASE_URL` plus storage and other env vars).
 
 ### Create a Backup
 

@@ -14,6 +14,7 @@ import {
   ENV_VAR_MAPPING,
 } from './secrets.validator';
 import { checkFilePermissions } from './permissions.checker';
+import { applyDbUrlToPostgresConfig, parsePostgresUrlToConfig } from './env-url.helper';
 
 @Injectable()
 export class DBDockConfigService {
@@ -49,6 +50,7 @@ export class DBDockConfigService {
       configData as Record<string, unknown>,
       envSecrets
     );
+    configData = applyDbUrlToPostgresConfig(configData as Record<string, unknown>) as unknown;
 
     if (configFromFile) {
       this.warnAboutLegacySecrets(configData as Record<string, unknown>);
@@ -243,15 +245,30 @@ export class DBDockConfigService {
   }
 
   private loadFromEnvironment(): Partial<DBDockConfig> {
-    return {
-      postgres: {
+    const dbUrl = this.nestConfig.get<string>('DBDOCK_DB_URL') ||
+      this.nestConfig.get<string>('DATABASE_URL');
+    let postgres: DBDockConfig['postgres'];
+    if (dbUrl) {
+      const parsed = parsePostgresUrlToConfig(dbUrl);
+      postgres = {
+        host: parsed.host,
+        port: parsed.port,
+        user: parsed.user,
+        password: parsed.password,
+        database: parsed.database,
+      };
+    } else {
+      postgres = {
         host: this.nestConfig.get<string>('DB_HOST', 'localhost'),
         port: this.nestConfig.get<number>('DB_PORT', 5432),
         user: this.nestConfig.get<string>('DB_USER', 'postgres'),
         password: this.nestConfig.get<string>('DBDOCK_DB_PASSWORD') ||
           this.nestConfig.get<string>('DB_PASSWORD', ''),
         database: this.nestConfig.get<string>('DB_NAME', 'postgres'),
-      },
+      };
+    }
+    return {
+      postgres,
       storage: {
         provider: this.nestConfig.get<StorageProvider>('STORAGE_PROVIDER', StorageProvider.LOCAL),
         bucket: this.nestConfig.get<string>('STORAGE_BUCKET', 'dbdock-backups'),

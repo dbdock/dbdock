@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
+import { getDbUrlFromEnv } from './env-url.helper';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
@@ -175,8 +176,10 @@ export function validateSecrets(
 
 function getRequiredSecrets(config: Record<string, unknown>): string[] {
   const required: string[] = [];
-
-  required.push('postgres.password');
+  const dbUrl = getDbUrlFromEnv();
+  if (!dbUrl || !dbUrl.trim()) {
+    required.push('postgres.password');
+  }
 
   const storageProvider = getNestedValue(config, 'storage.provider') as string;
   if (storageProvider === 's3' || storageProvider === 'r2') {
