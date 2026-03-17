@@ -222,10 +222,10 @@ export class DBDockConfigService {
       transformed.alerts = {};
       
       if (configData.alerts.email) {
-        transformed.alerts.smtpHost = configData.alerts.email.smtp.host;
-        transformed.alerts.smtpPort = configData.alerts.email.smtp.port;
-        transformed.alerts.smtpUser = configData.alerts.email.smtp.auth.user;
-        transformed.alerts.smtpPass = configData.alerts.email.smtp.auth.pass;
+        transformed.alerts.smtpHost = configData.alerts.email.smtp?.host;
+        transformed.alerts.smtpPort = configData.alerts.email.smtp?.port;
+        transformed.alerts.smtpUser = configData.alerts.email.smtp?.auth?.user;
+        transformed.alerts.smtpPass = configData.alerts.email.smtp?.auth?.pass;
         transformed.alerts.from = configData.alerts.email.from;
         transformed.alerts.to = configData.alerts.email.to;
       }
