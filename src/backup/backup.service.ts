@@ -18,11 +18,11 @@ import { spawn } from 'child_process';
 import { Readable, Transform } from 'stream';
 import { formatFileSize } from '../utils/format';
 import { hasPgPassEntry } from '../config/pgpass.helper';
+import { nanoid } from 'nanoid';
 
 @Injectable()
 export class BackupService {
   private readonly logger = new DBDockLogger(BackupService.name);
-  private uuidv4Promise: Promise<() => string> | null = null;
 
   constructor(
     private configService: DBDockConfigService,
@@ -32,16 +32,12 @@ export class BackupService {
     private alertService: AlertService,
   ) {}
 
-  private async getUuidv4(): Promise<string> {
-    if (!this.uuidv4Promise) {
-      this.uuidv4Promise = import('uuid').then((uuid) => uuid.v4);
-    }
-    const uuidv4 = await this.uuidv4Promise;
-    return uuidv4();
+  private generateBackupId(): string {
+    return nanoid();
   }
 
   async createBackup(options: BackupOptions = {}): Promise<BackupResult> {
-    const backupId = await this.getUuidv4();
+    const backupId = this.generateBackupId();
     const startTime = new Date();
 
     const metadata: BackupMetadata = {

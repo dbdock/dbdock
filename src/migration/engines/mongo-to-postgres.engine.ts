@@ -1,6 +1,6 @@
 import { MongoClient } from 'mongodb';
 import { Pool, PoolClient } from 'pg';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import {
   MigrationPlan,
   TableMapping,
@@ -364,7 +364,7 @@ async function insertDocument(
   doc: any,
   schema: string,
 ): Promise<void> {
-  const parentId = doc._id ? objectIdToUuid(doc._id.toString()) : uuidv4();
+  const parentId = doc._id ? objectIdToUuid(doc._id.toString()) : randomUUID();
 
   const columns: string[] = [];
   const values: any[] = [];
@@ -444,7 +444,7 @@ async function insertNestedObject(
   for (const field of nested.fields) {
     if (field.sourceField === 'id') {
       columns.push('"id"');
-      values.push(uuidv4());
+      values.push(randomUUID());
       placeholders.push(`$${paramIdx++}`);
     } else if (field.sourceField.includes('_id') && field.targetType === 'uuid') {
       columns.push(`"${field.targetColumn}"`);
@@ -482,7 +482,7 @@ async function insertArrayElements(
       for (const field of arr.fields) {
         if (field.sourceField === 'id') {
           columns.push('"id"');
-          vals.push(uuidv4());
+          vals.push(randomUUID());
           placeholders.push(`$${paramIdx++}`);
         } else if (
           field.sourceField.includes('_id') &&
@@ -514,7 +514,7 @@ async function insertArrayElements(
 
       await pgClient.query(
         `INSERT INTO ${schema}."${arr.targetTable}" ("id", "${arr.parentForeignKey}", "value") VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
-        [uuidv4(), parentId, val],
+        [randomUUID(), parentId, val],
       );
     }
   }
