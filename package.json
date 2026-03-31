@@ -1,6 +1,6 @@
 {
   "name": "dbdock",
-  "version": "1.1.21",
+  "version": "1.1.22",
   "description": "Enterprise-grade database backup, restore, and cross-database migration (MongoDB ↔ PostgreSQL). CLI-first tool with encryption, compression, and multi-cloud storage.",
   "author": "Naheem Olaide <naheemolaide@gmail.com>",
   "private": false,
