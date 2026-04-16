@@ -1,4 +1,4 @@
-import { Pool, PoolClient } from 'pg';
+import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
 import ora, { Ora } from 'ora';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
@@ -101,7 +101,7 @@ function maskPassword(url: string): string {
 }
 
 async function getTableNames(client: PoolClient): Promise<string[]> {
-  const result = await client.query(`
+  const result = await client.query<{ table_name: string }>(`
     SELECT table_name
     FROM information_schema.tables
     WHERE table_schema = 'public'
@@ -113,7 +113,7 @@ async function getTableNames(client: PoolClient): Promise<string[]> {
 
 async function getEnums(client: PoolClient): Promise<EnumDef[]> {
   try {
-    const result = await client.query(`
+    const result = await client.query<EnumDef>(`
       SELECT t.typname AS name,
              array_agg(e.enumlabel ORDER BY e.enumsortorder) AS values
       FROM pg_type t
@@ -129,11 +129,20 @@ async function getEnums(client: PoolClient): Promise<EnumDef[]> {
   }
 }
 
+interface ColumnRow {
+  name: string;
+  type: string;
+  nullable: boolean;
+  default_value: string | null;
+  identity: string;
+  generated: string;
+}
+
 async function getColumns(
   client: PoolClient,
   tableName: string,
 ): Promise<ColumnDef[]> {
-  const result = await client.query(
+  const result = await client.query<ColumnRow>(
     `
     SELECT
       a.attname AS name,
@@ -166,11 +175,16 @@ async function getColumns(
   }));
 }
 
+interface ConstraintRow {
+  constraint_name: string;
+  columns: string[];
+}
+
 async function getPrimaryKey(
   client: PoolClient,
   tableName: string,
 ): Promise<PrimaryKeyDef | null> {
-  const result = await client.query(
+  const result = await client.query<ConstraintRow>(
     `
     SELECT
       con.conname AS constraint_name,
@@ -200,7 +214,7 @@ async function getUniqueConstraints(
   client: PoolClient,
   tableName: string,
 ): Promise<UniqueConstraintDef[]> {
-  const result = await client.query(
+  const result = await client.query<ConstraintRow>(
     `
     SELECT
       con.conname AS constraint_name,
@@ -225,11 +239,20 @@ async function getUniqueConstraints(
   }));
 }
 
+interface ForeignKeyRow {
+  constraint_name: string;
+  columns: string[];
+  referenced_table: string;
+  referenced_columns: string[];
+  on_delete: string;
+  on_update: string;
+}
+
 async function getForeignKeys(
   client: PoolClient,
   tableName: string,
 ): Promise<ForeignKeyDef[]> {
-  const result = await client.query(
+  const result = await client.query<ForeignKeyRow>(
     `
     SELECT
       con.conname AS constraint_name,
@@ -278,7 +301,7 @@ async function getIndexes(
   client: PoolClient,
   tableName: string,
 ): Promise<IndexDef[]> {
-  const result = await client.query(
+  const result = await client.query<{ name: string; definition: string }>(
     `
     SELECT
       i.indexname AS name,
@@ -308,17 +331,17 @@ async function getRowCount(
   client: PoolClient,
   tableName: string,
 ): Promise<number> {
-  const result = await client.query(
+  const result = await client.query<{ estimate: string }>(
     `SELECT reltuples::bigint AS estimate FROM pg_class WHERE relname = $1`,
     [tableName],
   );
   const estimate = parseInt(result.rows[0]?.estimate || '0');
 
   if (estimate < 10000) {
-    const exact = await client.query(
+    const exact = await client.query<{ count: number }>(
       `SELECT count(*)::integer AS count FROM "public"."${tableName}"`,
     );
-    return parseInt(exact.rows[0]?.count || '0');
+    return Number(exact.rows[0]?.count ?? 0);
   }
 
   return Math.max(estimate, 0);
@@ -463,14 +486,14 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function queryWithRetry(
+async function queryWithRetry<T extends QueryResultRow = QueryResultRow>(
   pool: Pool,
   sql: string,
-  params?: any[],
-): Promise<any> {
+  params?: unknown[],
+): Promise<QueryResult<T>> {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      return await pool.query(sql, params);
+      return await pool.query<T>(sql, params);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       const isRetryable =
@@ -488,6 +511,7 @@ async function queryWithRetry(
       await sleep(delay);
     }
   }
+  throw new Error('queryWithRetry: exhausted retries');
 }
 
 async function copyTableData(
@@ -521,7 +545,7 @@ async function copyTableData(
     );
 
     while (true) {
-      const result = await sourceClient.query(
+      const result = await sourceClient.query<Record<string, unknown>>(
         `FETCH ${batchSize} FROM "${cursorName}"`,
       );
 
@@ -580,7 +604,7 @@ async function resetSequences(
       if (!isSerial && !isIdentity) continue;
 
       try {
-        const maxResult = await client.query(
+        const maxResult = await client.query<{ max_val: string }>(
           `SELECT COALESCE(MAX("${col.name}"), 0)::bigint AS max_val FROM "public"."${table.name}"`,
         );
         const maxVal = parseInt(maxResult.rows[0]?.max_val || '0');
@@ -592,7 +616,7 @@ async function resetSequences(
             `ALTER TABLE "public"."${table.name}" ALTER COLUMN "${col.name}" RESTART WITH ${maxVal + 1}`,
           );
         } else {
-          const seqResult = await client.query(
+          const seqResult = await client.query<{ seq_name: string | null }>(
             `SELECT pg_get_serial_sequence($1, $2) AS seq_name`,
             [`public.${table.name}`, col.name],
           );
@@ -742,7 +766,7 @@ export async function driverCopyCommand(
   logger.info(`Mode: ${mode}`);
 
   console.log('');
-  const { tableScope } = await inquirer.prompt([
+  const { tableScope } = (await inquirer.prompt([
     {
       type: 'list',
       name: 'tableScope',
@@ -758,13 +782,13 @@ export async function driverCopyCommand(
         },
       ],
     },
-  ]);
+  ])) as { tableScope: 'all' | 'pick' };
 
   let selectedTables: string[];
   if (tableScope === 'all') {
     selectedTables = sortedTables.map((t) => t.name);
   } else {
-    const pick = await inquirer.prompt([
+    const pick = (await inquirer.prompt([
       {
         type: 'checkbox',
         name: 'selectedTables',
@@ -776,7 +800,7 @@ export async function driverCopyCommand(
         })),
         pageSize: 20,
       },
-    ]);
+    ])) as { selectedTables: string[] };
     selectedTables = pick.selectedTables;
   }
 
@@ -818,14 +842,14 @@ export async function driverCopyCommand(
   }
 
   console.log('');
-  const { confirm } = await inquirer.prompt([
+  const { confirm } = (await inquirer.prompt([
     {
       type: 'confirm',
       name: 'confirm',
       message: `Copy ${selectedTables.length} table(s) from ${source.database} → ${target.database}?`,
       default: false,
     },
-  ]);
+  ])) as { confirm: boolean };
 
   if (!confirm) {
     logger.warn('Copy cancelled');

@@ -4,7 +4,6 @@ import {
   MigrationOptions,
   AnalysisResult,
   ParsedDatabaseUrl,
-  DEFAULT_MIGRATION_OPTIONS,
 } from '../types';
 import { analyzeMongoDB, parseMongoUrl } from '../analyzers/mongodb.analyzer';
 import {
@@ -72,7 +71,7 @@ export async function executeMigration(
     return executePostgresToMongo(plan, onProgress);
   }
 
-  throw new Error(`Unsupported migration direction: ${plan.direction}`);
+  throw new Error(`Unsupported migration direction: ${String(plan.direction)}`);
 }
 
 export function maskUrl(url: string): string {

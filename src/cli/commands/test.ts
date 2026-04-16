@@ -1,12 +1,11 @@
 import ora from 'ora';
-import { loadConfig } from '../utils/config';
+import { loadConfig, CLIConfig } from '../utils/config';
 import { logger } from '../utils/logger';
 import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { Logger } from '@nestjs/common';
 import { S3StorageAdapter } from '../../storage/adapters/s3.adapter';
 import { R2StorageAdapter } from '../../storage/adapters/r2.adapter';
-import { LocalStorageAdapter } from '../../storage/adapters/local.adapter';
 import { CloudinaryStorageAdapter } from '../../storage/adapters/cloudinary.adapter';
 
 Logger.overrideLogger(false);
@@ -42,11 +41,11 @@ export async function testCommand(): Promise<void> {
   }
 }
 
-async function testDatabaseConnection(config: any): Promise<void> {
+async function testDatabaseConnection(config: CLIConfig): Promise<void> {
   const dbConfig = config.database;
 
   if (dbConfig.type === 'sqlite') {
-    if (!existsSync(dbConfig.sqlitePath)) {
+    if (!dbConfig.sqlitePath || !existsSync(dbConfig.sqlitePath)) {
       throw new Error(`SQLite database not found at ${dbConfig.sqlitePath}`);
     }
     return;
@@ -79,7 +78,7 @@ async function testDatabaseConnection(config: any): Promise<void> {
 
     let hasError = false;
 
-    psqlProcess.stderr.on('data', (data) => {
+    psqlProcess.stderr.on('data', (data: Buffer) => {
       const message = data.toString();
       if (!message.includes('NOTICE')) {
         hasError = true;
@@ -105,7 +104,7 @@ async function testDatabaseConnection(config: any): Promise<void> {
   });
 }
 
-async function testStorageConfiguration(config: any): Promise<void> {
+async function testStorageConfiguration(config: CLIConfig): Promise<void> {
   const storageConfig = config.storage;
 
   if (storageConfig.provider === 'local') {
@@ -229,7 +228,7 @@ async function testStorageConfiguration(config: any): Promise<void> {
   }
 }
 
-async function testEmailConfiguration(config: any): Promise<void> {
+async function testEmailConfiguration(config: CLIConfig): Promise<void> {
   const emailConfig = config.alerts?.email;
 
   if (!emailConfig) {

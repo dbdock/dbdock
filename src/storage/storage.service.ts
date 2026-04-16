@@ -40,7 +40,7 @@ export class StorageService {
         this.logger.log('Initialized S3 storage adapter');
         break;
 
-      case StorageProvider.R2:
+      case StorageProvider.R2: {
         if (!storageConfig.accessKeyId || !storageConfig.secretAccessKey) {
           throw new Error('R2 credentials are required');
         }
@@ -70,6 +70,7 @@ export class StorageService {
         });
         this.logger.log('Initialized R2 storage adapter');
         break;
+      }
 
       case StorageProvider.CLOUDINARY:
         if (
@@ -95,7 +96,9 @@ export class StorageService {
         break;
 
       default:
-        throw new Error(`Unknown storage provider: ${storageConfig.provider}`);
+        throw new Error(
+          `Unknown storage provider: ${String(storageConfig.provider)}`,
+        );
     }
   }
 

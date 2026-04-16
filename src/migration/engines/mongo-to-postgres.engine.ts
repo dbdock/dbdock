@@ -1,4 +1,4 @@
-import { MongoClient } from 'mongodb';
+import { MongoClient, Db, Filter } from 'mongodb';
 import { Pool, PoolClient } from 'pg';
 import { randomUUID } from 'crypto';
 import {
@@ -10,18 +10,14 @@ import {
   MigrationResult,
   TableMigrationResult,
 } from '../types';
-import {
-  objectIdToUuid,
-  coerceValue,
-  mongoTypeToPgType,
-  resolveMajorityType,
-} from '../type.mapper';
+import { MongoDocument } from '../row.types';
+import { objectIdToUuid, coerceValue } from '../type.mapper';
 
 interface MigrationError {
   table: string;
   sourceId: string;
   error: string;
-  data?: any;
+  data?: unknown;
 }
 
 export async function executeMongoToPostgres(
@@ -240,7 +236,9 @@ async function addForeignKeys(
             REFERENCES ${schema}."${mapping.targetTable}"("id")
             ON DELETE CASCADE
           `);
-        } catch {}
+        } catch {
+          // Constraint may already exist or source table missing; ignore.
+        }
       }
     }
 
@@ -253,13 +251,15 @@ async function addForeignKeys(
           REFERENCES ${schema}."${mapping.targetTable}"("id")
           ON DELETE CASCADE
         `);
-      } catch {}
+      } catch {
+        // Constraint may already exist; ignore.
+      }
     }
   }
 }
 
 async function migrateCollection(
-  db: any,
+  db: Db,
   pgClient: PoolClient,
   mapping: TableMapping,
   plan: MigrationPlan,
@@ -267,8 +267,8 @@ async function migrateCollection(
   errors: MigrationError[],
   onProgress?: (table: string, processed: number, total: number) => void,
 ): Promise<TableMigrationResult> {
-  const collection = db.collection(mapping.sourceCollection);
-  let query: any = {};
+  const collection = db.collection<MongoDocument>(mapping.sourceCollection);
+  let query: Filter<MongoDocument> = {};
 
   if (plan.options.incremental && plan.options.since) {
     const sinceDate = new Date(plan.options.since);
@@ -288,12 +288,12 @@ async function migrateCollection(
   const batchSize = plan.options.batchSize;
   const cursor = collection.find(query).batchSize(batchSize);
 
-  let batch: any[] = [];
+  let batch: MongoDocument[] = [];
 
   while (await cursor.hasNext()) {
     const doc = await cursor.next();
     if (!doc) continue;
-    batch.push(doc);
+    batch.push(doc as MongoDocument);
 
     if (batch.length >= batchSize) {
       const failed = await processBatch(
@@ -336,7 +336,7 @@ async function migrateCollection(
 async function processBatch(
   pgClient: PoolClient,
   mapping: TableMapping,
-  docs: any[],
+  docs: MongoDocument[],
   schema: string,
   errors: MigrationError[],
 ): Promise<number> {
@@ -347,7 +347,10 @@ async function processBatch(
       await insertDocument(pgClient, mapping, doc, schema);
     } catch (err) {
       failed++;
-      const sourceId = doc._id?.toString?.() || 'unknown';
+      const sourceId =
+        doc._id && typeof doc._id.toString === 'function'
+          ? doc._id.toString()
+          : 'unknown';
       errors.push({
         table: mapping.targetTable,
         sourceId,
@@ -363,22 +366,23 @@ async function processBatch(
 async function insertDocument(
   pgClient: PoolClient,
   mapping: TableMapping,
-  doc: any,
+  doc: MongoDocument,
   schema: string,
 ): Promise<void> {
   const parentId = doc._id ? objectIdToUuid(doc._id.toString()) : randomUUID();
 
   const columns: string[] = [];
-  const values: any[] = [];
+  const values: unknown[] = [];
   const placeholders: string[] = [];
   let paramIdx = 1;
 
   for (const field of mapping.fields) {
     const value = getNestedValue(doc, field.sourceField);
 
-    let pgValue: any;
+    let pgValue: unknown;
     if (field.transform === 'uuid_from_objectid' && value) {
-      pgValue = objectIdToUuid(value.toString());
+      const v = value as { toString: () => string };
+      pgValue = objectIdToUuid(v.toString());
     } else if (field.transform === 'jsonb') {
       pgValue = value != null ? JSON.stringify(value) : null;
     } else if (field.transform === 'cast' && value != null) {
@@ -392,8 +396,11 @@ async function insertDocument(
       field.targetType === 'jsonb'
     ) {
       pgValue = JSON.stringify(value);
-    } else if (value !== undefined) {
-      pgValue = value?.toString?.() ?? value;
+    } else if (value !== undefined && value !== null) {
+      const maybeToString = value as { toString?: () => string };
+      pgValue = maybeToString.toString
+        ? maybeToString.toString()
+        : (value as unknown);
     } else {
       pgValue = null;
     }
@@ -422,7 +429,7 @@ async function insertDocument(
           pgClient,
           schema,
           nested,
-          nestedValue,
+          nestedValue as Record<string, unknown>,
           parentId,
         );
       }
@@ -432,7 +439,13 @@ async function insertDocument(
   for (const arr of mapping.arrayMappings) {
     const arrayValue = getNestedValue(doc, arr.sourceField);
     if (Array.isArray(arrayValue)) {
-      await insertArrayElements(pgClient, schema, arr, arrayValue, parentId);
+      await insertArrayElements(
+        pgClient,
+        schema,
+        arr,
+        arrayValue as unknown[],
+        parentId,
+      );
     }
   }
 }
@@ -441,13 +454,13 @@ async function insertNestedObject(
   pgClient: PoolClient,
   schema: string,
   nested: NestedMapping,
-  value: any,
+  value: Record<string, unknown>,
   parentId: string,
 ): Promise<void> {
   if (!nested.fields) return;
 
   const columns: string[] = [];
-  const values: any[] = [];
+  const values: unknown[] = [];
   const placeholders: string[] = [];
   let paramIdx = 1;
 
@@ -482,13 +495,13 @@ async function insertArrayElements(
   pgClient: PoolClient,
   schema: string,
   arr: ArrayMapping,
-  values: any[],
+  values: unknown[],
   parentId: string,
 ): Promise<void> {
   for (const element of values) {
     if (arr.strategy === 'child_table' && arr.fields) {
       const columns: string[] = [];
-      const vals: any[] = [];
+      const vals: unknown[] = [];
       const placeholders: string[] = [];
       let paramIdx = 1;
 
@@ -509,10 +522,10 @@ async function insertArrayElements(
             field.sourceField.split('.').pop() || field.sourceField;
           const val =
             typeof element === 'object' && element
-              ? (element[fieldName] ?? null)
+              ? ((element as Record<string, unknown>)[fieldName] ?? null)
               : null;
           columns.push(`"${field.targetColumn}"`);
-          vals.push(val instanceof Date ? val : val);
+          vals.push(val);
           placeholders.push(`$${paramIdx++}`);
         }
       }
@@ -522,8 +535,10 @@ async function insertArrayElements(
         vals,
       );
     } else {
-      const val =
-        typeof element === 'object' ? JSON.stringify(element) : element;
+      const val: unknown =
+        typeof element === 'object' && element !== null
+          ? JSON.stringify(element)
+          : element;
 
       await pgClient.query(
         `INSERT INTO ${schema}."${arr.targetTable}" ("id", "${arr.parentForeignKey}", "value") VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
@@ -533,13 +548,13 @@ async function insertArrayElements(
   }
 }
 
-function getNestedValue(obj: any, path: string): any {
+function getNestedValue(obj: unknown, path: string): unknown {
   if (!path || !obj) return obj;
   const parts = path.replace(/\[\]/g, '').split('.');
-  let current = obj;
+  let current: unknown = obj;
   for (const part of parts) {
-    if (current == null) return undefined;
-    current = current[part];
+    if (current == null || typeof current !== 'object') return undefined;
+    current = (current as Record<string, unknown>)[part];
   }
   return current;
 }
@@ -555,16 +570,21 @@ async function writeErrors(
         `INSERT INTO ${schema}._migration_errors (table_name, source_id, error_message, source_data) VALUES ($1, $2, $3, $4)`,
         [err.table, err.sourceId, err.error, err.data],
       );
-    } catch {}
+    } catch {
+      // Error table write is best-effort; ignore.
+    }
   }
 }
 
-function safeStringify(obj: any): string {
+function safeStringify(obj: unknown): string {
   try {
-    return JSON.stringify(obj, (_, value) => {
+    return JSON.stringify(obj, (_, value: unknown) => {
       if (typeof value === 'bigint') return value.toString();
       if (value instanceof Date) return value.toISOString();
-      if (value?._bsontype) return value.toString();
+      if (value && typeof value === 'object' && '_bsontype' in value) {
+        const v = value as { toString: () => string };
+        return v.toString();
+      }
       return value;
     });
   } catch {

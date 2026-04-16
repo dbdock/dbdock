@@ -1,22 +1,18 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { DBDockConfigService } from '../../src/config/config.service';
-import { StorageService } from '../../src/storage/storage.service';
-import { CryptoService } from '../../src/crypto/crypto.service';
-import { CompressionService } from '../../src/backup/compression.service';
-import { BackupService } from '../../src/backup/backup.service';
 import { AppModule } from '../../src/app.module';
+import type { DBDockConfig } from '../../src/config/config.schema';
 import { Readable } from 'stream';
 
-export async function createTestModule(): Promise<TestingModule> {
+export function createTestModule(): Promise<TestingModule> {
   return Test.createTestingModule({
     imports: [AppModule],
   }).compile();
 }
 
-export function createMockConfigService(overrides?: any) {
+export function createMockConfigService(overrides?: Partial<DBDockConfig>) {
   return {
     get: jest.fn((key: string) => {
-      const config = {
+      const config: Record<string, unknown> = {
         postgres: {
           host: 'localhost',
           port: 5432,

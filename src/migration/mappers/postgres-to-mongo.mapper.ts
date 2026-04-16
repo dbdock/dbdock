@@ -9,7 +9,7 @@ import {
   MigrationOptions,
   DEFAULT_MIGRATION_OPTIONS,
 } from '../types';
-import { pgTypeToMongoType, pluralize } from '../type.mapper';
+import { pluralize } from '../type.mapper';
 
 interface TableRelationship {
   fromTable: string;
@@ -124,7 +124,7 @@ function detectRelationships(analysis: PgAnalysisResult): TableRelationship[] {
 
 function detectJunctionTables(
   analysis: PgAnalysisResult,
-  relationships: TableRelationship[],
+  _relationships: TableRelationship[],
 ): Set<string> {
   const junctions = new Set<string>();
 
@@ -147,7 +147,7 @@ function mapTableToDocument(
   analysis: PgAnalysisResult,
   relationships: TableRelationship[],
   junctionTables: Set<string>,
-  conflicts: MigrationConflict[],
+  _conflicts: MigrationConflict[],
 ): DocumentMapping {
   const collectionName = table.name;
   const fieldMappings: Record<string, string> = {};
@@ -263,5 +263,5 @@ function handleManyToMany(
 }
 
 function toCamelCase(str: string): string {
-  return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+  return str.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
 }

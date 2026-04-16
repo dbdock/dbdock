@@ -5,6 +5,7 @@ import {
   MongoFieldInfo,
   ParsedDatabaseUrl,
 } from '../types';
+import { MongoDocument, MongoIndexInfo } from '../row.types';
 import { detectMongoFieldType } from '../type.mapper';
 
 const SAMPLE_SIZE = 5000;
@@ -74,13 +75,13 @@ async function analyzeCollection(
   const collection = db.collection(collectionName);
   const documentCount = await collection.countDocuments();
 
-  let documents: any[];
+  let documents: MongoDocument[];
   if (documentCount <= sampleSize) {
-    documents = await collection.find({}).toArray();
+    documents = (await collection.find({}).toArray()) as MongoDocument[];
   } else {
-    documents = await collection
+    documents = (await collection
       .aggregate([{ $sample: { size: sampleSize } }])
-      .toArray();
+      .toArray()) as MongoDocument[];
   }
 
   const fieldMap = new Map<string, FieldAccumulator>();
@@ -92,10 +93,12 @@ async function analyzeCollection(
 
   const fields = buildFieldInfos(fieldMap, sampledCount, documentCount);
 
-  const indexes = await collection.indexes().catch(() => []);
-  const indexInfo = indexes.map((idx: any) => ({
-    name: idx.name,
-    key: idx.key,
+  const indexes = (await collection
+    .indexes()
+    .catch(() => [] as MongoIndexInfo[])) as MongoIndexInfo[];
+  const indexInfo = indexes.map((idx) => ({
+    name: idx.name ?? '',
+    key: idx.key ?? {},
     unique: idx.unique || false,
   }));
 
@@ -115,7 +118,7 @@ interface FieldAccumulator {
   isArray: boolean;
   isObjectId: boolean;
   isNestedObject: boolean;
-  sampleValues: any[];
+  sampleValues: unknown[];
   depth: number;
   children: Map<string, FieldAccumulator>;
   arrayElementTypes: Set<string>;
@@ -146,14 +149,14 @@ function getOrCreateAccumulator(
 }
 
 function analyzeDocument(
-  doc: any,
+  doc: unknown,
   prefix: string,
   fieldMap: Map<string, FieldAccumulator>,
   depth: number,
 ): void {
   if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return;
 
-  for (const [key, value] of Object.entries(doc)) {
+  for (const [key, value] of Object.entries(doc as Record<string, unknown>)) {
     const path = prefix ? `${prefix}.${key}` : key;
     const acc = getOrCreateAccumulator(fieldMap, path, key, depth);
     acc.count++;
@@ -187,27 +190,25 @@ function analyzeDocument(
   }
 }
 
-function isSpecialBsonType(value: any): boolean {
+function isSpecialBsonType(value: unknown): boolean {
   if (!value || typeof value !== 'object') return false;
-  return !!(
-    value._bsontype ||
-    value instanceof ObjectId ||
-    value instanceof Date
-  );
+  const v = value as { _bsontype?: string };
+  return !!(v._bsontype || value instanceof ObjectId || value instanceof Date);
 }
 
-function summarizeValue(value: any): any {
+function summarizeValue(value: unknown): unknown {
   if (value === null || value === undefined) return value;
   if (typeof value === 'string')
     return value.length > 50 ? value.slice(0, 50) + '...' : value;
   if (typeof value === 'number' || typeof value === 'boolean') return value;
   if (value instanceof Date) return value.toISOString();
-  if (value instanceof ObjectId || value?._bsontype === 'ObjectId')
-    return value.toString();
+  if (value instanceof ObjectId) return value.toString();
+  const v = value as { _bsontype?: string; toString?: () => string };
+  if (v._bsontype === 'ObjectId') return v.toString?.();
   if (Array.isArray(value)) return `[Array(${value.length})]`;
   if (typeof value === 'object')
     return `{Object(${Object.keys(value).length} keys)}`;
-  return String(value);
+  return String(value as string | number | boolean);
 }
 
 function buildFieldInfos(

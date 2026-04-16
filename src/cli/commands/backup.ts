@@ -3,13 +3,9 @@ import { loadConfig, CLIConfig } from '../utils/config';
 import { logger } from '../utils/logger';
 import { createBackupStandalone } from '../../standalone/backup-standalone';
 import { Logger } from '@nestjs/common';
-import { applyRetention, formatRetentionStats } from '../utils/retention';
-import { LocalStorageAdapter } from '../../storage/adapters/local.adapter';
-import { S3StorageAdapter } from '../../storage/adapters/s3.adapter';
-import { CloudinaryStorageAdapter } from '../../storage/adapters/cloudinary.adapter';
-import { IStorageAdapter } from '../../storage/storage.interface';
 import { AlertService } from '../../alerts/alert.service';
 import { BackupType, BackupStatus } from '../../backup/backup.types';
+import { DBDockConfigService } from '../../config/config.service';
 
 Logger.overrideLogger(false);
 
@@ -55,7 +51,7 @@ export async function backupCommand(options: BackupOptions): Promise<void> {
         }
         return null;
       },
-    } as any;
+    } as unknown as DBDockConfigService;
     const alertService = new AlertService(mockConfigService);
 
     // ... validation logic ...
@@ -126,7 +122,7 @@ export async function backupCommand(options: BackupOptions): Promise<void> {
           }
           return null;
         },
-      } as any;
+      } as unknown as DBDockConfigService;
       const alertService = new AlertService(mockConfigService);
 
       await alertService.sendBackupFailureAlert(
@@ -145,7 +141,7 @@ export async function backupCommand(options: BackupOptions): Promise<void> {
         },
         error instanceof Error ? error : new Error(String(error)),
       );
-    } catch (alertError) {
+    } catch {
       // Ignore alert failures during backup failure
     }
 

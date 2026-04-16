@@ -1,9 +1,9 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression, SchedulerRegistry } from '@nestjs/schedule';
+import { CronJob } from 'cron';
 import { DBDockConfigService } from '../config/config.service';
 import { BackupService } from '../backup/backup.service';
 import { RetentionService } from '../wal/retention.service';
-import { ScheduleType } from '../config/config.schema';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -18,7 +18,7 @@ export class SchedulerService implements OnModuleInit {
   private readonly logger = new Logger(SchedulerService.name);
   private scheduledBackupsEnabled = false;
   private retentionCleanupEnabled = true;
-  private registeredJobs: Map<string, any> = new Map();
+  private registeredJobs: Map<string, CronJob> = new Map();
 
   constructor(
     private configService: DBDockConfigService,
@@ -38,7 +38,9 @@ export class SchedulerService implements OnModuleInit {
   private loadAndRegisterSchedules() {
     try {
       const configPath = join(process.cwd(), 'dbdock.config.json');
-      const configFile = JSON.parse(readFileSync(configPath, 'utf-8'));
+      const configFile = JSON.parse(readFileSync(configPath, 'utf-8')) as {
+        backup?: { schedules?: ScheduleConfig[] };
+      };
       const schedules: ScheduleConfig[] = configFile.backup?.schedules || [];
 
       if (schedules.length === 0) {
@@ -69,9 +71,11 @@ export class SchedulerService implements OnModuleInit {
 
   private registerSchedule(schedule: ScheduleConfig) {
     try {
-      const { CronJob } = require('cron');
-      const job = new CronJob(schedule.cron, async () => {
-        await this.executeScheduledBackup(schedule.name);
+      const job = CronJob.from({
+        cronTime: schedule.cron,
+        onTick: () => {
+          void this.executeScheduledBackup(schedule.name);
+        },
       });
 
       this.schedulerRegistry.addCronJob(schedule.name, job);
@@ -109,7 +113,7 @@ export class SchedulerService implements OnModuleInit {
 
   reloadSchedules(): void {
     this.registeredJobs.forEach((job, name) => {
-      job.stop();
+      void job.stop();
       this.schedulerRegistry.deleteCronJob(name);
     });
 
@@ -140,7 +144,8 @@ export class SchedulerService implements OnModuleInit {
         result.errors.forEach((error) => this.logger.error(error));
       }
     } catch (error) {
-      this.logger.error(`Retention cleanup failed: ${error.message}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Retention cleanup failed: ${msg}`);
     }
   }
 
@@ -163,7 +168,8 @@ export class SchedulerService implements OnModuleInit {
         `Scheduled backup completed: ${result.metadata.id} (${result.metadata.size} bytes)`,
       );
     } catch (error) {
-      this.logger.error(`Scheduled backup failed: ${error.message}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Scheduled backup failed: ${msg}`);
       throw error;
     }
   }

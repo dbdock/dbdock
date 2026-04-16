@@ -54,8 +54,9 @@ export class RetentionService {
       result.backupsDeleted = backupsDeleted.count;
       result.spaceSaved += backupsDeleted.spaceSaved;
     } catch (error) {
-      this.logger.error(`Error cleaning up backups: ${error.message}`);
-      result.errors.push(`Backup cleanup: ${error.message}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Error cleaning up backups: ${msg}`);
+      result.errors.push(`Backup cleanup: ${msg}`);
     }
 
     try {
@@ -64,8 +65,9 @@ export class RetentionService {
       );
       result.walFilesDeleted = walFilesDeleted;
     } catch (error) {
-      this.logger.error(`Error cleaning up WAL files: ${error.message}`);
-      result.errors.push(`WAL cleanup: ${error.message}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Error cleaning up WAL files: ${msg}`);
+      result.errors.push(`WAL cleanup: ${msg}`);
     }
 
     this.logger.log(
@@ -110,9 +112,8 @@ export class RetentionService {
 
         this.logger.log(`Deleted backup: ${backup.id} (${backupInfo.reason})`);
       } catch (error) {
-        this.logger.error(
-          `Failed to delete backup ${backupInfo.id}: ${error.message}`,
-        );
+        const msg = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Failed to delete backup ${backupInfo.id}: ${msg}`);
       }
     }
 

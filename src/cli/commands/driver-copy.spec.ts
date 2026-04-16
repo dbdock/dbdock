@@ -9,12 +9,12 @@ jest.mock('ora', () => {
 });
 
 jest.mock('chalk', () => ({
-  bold: jest.fn((s) => s),
-  gray: jest.fn((s) => s),
-  green: jest.fn((s) => s),
-  red: jest.fn((s) => s),
-  blue: jest.fn((s) => s),
-  yellow: jest.fn((s) => s),
+  bold: jest.fn((s: string) => s),
+  gray: jest.fn((s: string) => s),
+  green: jest.fn((s: string) => s),
+  red: jest.fn((s: string) => s),
+  blue: jest.fn((s: string) => s),
+  yellow: jest.fn((s: string) => s),
 }));
 
 jest.mock('inquirer', () => ({
@@ -515,7 +515,7 @@ describe('driver-copy internals', () => {
       ];
 
       const sorted = topologicalSort(tables);
-      const names = sorted.map((t: any) => t.name);
+      const names = sorted.map((t) => t.name);
 
       expect(names.indexOf('users')).toBeLessThan(names.indexOf('orders'));
       expect(names.indexOf('orders')).toBeLessThan(
@@ -688,7 +688,7 @@ describe('driver-copy internals', () => {
       ];
 
       const sorted = topologicalSort(tables);
-      const names = sorted.map((t: any) => t.name);
+      const names = sorted.map((t) => t.name);
 
       expect(names.indexOf('a')).toBeLessThan(names.indexOf('b'));
       expect(names.indexOf('b')).toBeLessThan(names.indexOf('c'));

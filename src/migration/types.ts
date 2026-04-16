@@ -20,7 +20,7 @@ export interface MongoFieldInfo {
   nestedFields?: MongoFieldInfo[];
   arrayElementType?: string;
   possibleReference?: string;
-  sampleValues: any[];
+  sampleValues: unknown[];
   depth: number;
 }
 

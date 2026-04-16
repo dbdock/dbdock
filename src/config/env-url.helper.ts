@@ -30,13 +30,22 @@ export function getDbUrlFromEnv(): string | undefined {
   return process.env.DBDOCK_DB_URL || process.env.DATABASE_URL;
 }
 
+type MutableConfig = Record<string, unknown> & {
+  postgres?: Record<string, unknown>;
+  database?: Record<string, unknown>;
+};
+
+function cloneConfig(config: Record<string, unknown>): MutableConfig {
+  return JSON.parse(JSON.stringify(config)) as MutableConfig;
+}
+
 export function applyDbUrlToPostgresConfig(
   config: Record<string, unknown>,
 ): Record<string, unknown> {
   const url = getDbUrlFromEnv();
   if (!url || !url.trim()) return config;
   const parsed = parsePostgresUrlToConfig(url);
-  const merged = JSON.parse(JSON.stringify(config));
+  const merged = cloneConfig(config);
   if (!merged.postgres) merged.postgres = {};
   merged.postgres.host = parsed.host;
   merged.postgres.port = parsed.port;
@@ -52,7 +61,7 @@ export function applyDbUrlToCliDatabase(
   const url = getDbUrlFromEnv();
   if (!url || !url.trim()) return config;
   const parsed = parsePostgresUrlToConfig(url);
-  const merged = JSON.parse(JSON.stringify(config));
+  const merged = cloneConfig(config);
   if (!merged.database) merged.database = {};
   merged.database.host = parsed.host;
   merged.database.port = parsed.port;

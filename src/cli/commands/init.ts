@@ -15,7 +15,6 @@ import {
   mkdirSync,
 } from 'fs';
 import { join } from 'path';
-import { ENV_VAR_MAPPING } from '../../config/secrets.validator';
 
 const ENV_FILE = '.env';
 
@@ -628,20 +627,23 @@ function extractSecrets(answers: InitAnswers): SecretsMap {
 }
 
 function removeSecretsFromConfig(config: CLIConfig): CLIConfig {
-  const cleaned = JSON.parse(JSON.stringify(config));
+  type MutableRecord = Record<string, unknown>;
+  const cleaned = JSON.parse(JSON.stringify(config)) as CLIConfig;
 
   if (cleaned.database) {
     delete cleaned.database.password;
   }
 
   if (cleaned.storage?.s3) {
-    delete cleaned.storage.s3.accessKeyId;
-    delete cleaned.storage.s3.secretAccessKey;
+    const s3 = cleaned.storage.s3 as unknown as MutableRecord;
+    delete s3.accessKeyId;
+    delete s3.secretAccessKey;
   }
 
   if (cleaned.storage?.cloudinary) {
-    delete cleaned.storage.cloudinary.apiKey;
-    delete cleaned.storage.cloudinary.apiSecret;
+    const cloudinary = cleaned.storage.cloudinary as unknown as MutableRecord;
+    delete cloudinary.apiKey;
+    delete cloudinary.apiSecret;
   }
 
   if (cleaned.backup?.encryption) {
@@ -649,11 +651,13 @@ function removeSecretsFromConfig(config: CLIConfig): CLIConfig {
   }
 
   if (cleaned.alerts?.email?.smtp?.auth) {
-    delete cleaned.alerts.email.smtp.auth;
+    const smtp = cleaned.alerts.email.smtp as unknown as MutableRecord;
+    delete smtp.auth;
   }
 
   if (cleaned.alerts?.slack) {
-    delete cleaned.alerts.slack.webhookUrl;
+    const slack = cleaned.alerts.slack as unknown as MutableRecord;
+    delete slack.webhookUrl;
   }
 
   return cleaned;

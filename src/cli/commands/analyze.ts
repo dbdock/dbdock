@@ -8,6 +8,7 @@ import {
 import {
   MongoAnalysisResult,
   MongoFieldInfo,
+  ParsedDatabaseUrl,
   PgAnalysisResult,
 } from '../../migration/types';
 
@@ -17,7 +18,7 @@ export async function analyzeCommand(url: string): Promise<void> {
   console.log(chalk.gray('  ─'.repeat(30)));
   console.log('');
 
-  let parsed;
+  let parsed: ParsedDatabaseUrl;
   try {
     parsed = parseDatabaseUrl(url);
   } catch (error) {

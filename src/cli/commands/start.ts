@@ -1,8 +1,6 @@
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from '../../app.module';
 import { logger } from '../utils/logger';
 import { Logger } from '@nestjs/common';
-import { loadConfig } from '../utils/config';
+import { loadConfig, ScheduleEntry } from '../utils/config';
 import { spawn } from 'child_process';
 import { existsSync, writeFileSync } from 'fs';
 import { join } from 'path';
@@ -26,14 +24,14 @@ export async function startCommand(options: StartOptions = {}): Promise<void> {
       logger.info('\nTo create schedules, run:');
       logger.log('  npx dbdock schedule\n');
 
-      const { shouldContinue } = await inquirer.prompt([
+      const { shouldContinue } = (await inquirer.prompt([
         {
           type: 'confirm',
           name: 'shouldContinue',
           message: 'Start DBDock service anyway (for future schedules)?',
           default: false,
         },
-      ]);
+      ])) as { shouldContinue: boolean };
 
       if (!shouldContinue) {
         logger.info(
@@ -43,7 +41,9 @@ export async function startCommand(options: StartOptions = {}): Promise<void> {
       }
     }
 
-    const enabledSchedules = schedules.filter((s: any) => s.enabled !== false);
+    const enabledSchedules = schedules.filter(
+      (s: ScheduleEntry) => s.enabled !== false,
+    );
 
     if (enabledSchedules.length === 0 && schedules.length > 0) {
       logger.warn('All schedules are disabled');
@@ -54,7 +54,7 @@ export async function startCommand(options: StartOptions = {}): Promise<void> {
     if (!options.pm2 && !options.daemon) {
       logger.info('\nSelect how to run DBDock scheduler service:\n');
 
-      const { startMode } = await inquirer.prompt([
+      const { startMode } = (await inquirer.prompt([
         {
           type: 'list',
           name: 'startMode',
@@ -70,7 +70,7 @@ export async function startCommand(options: StartOptions = {}): Promise<void> {
             },
           ],
         },
-      ]);
+      ])) as { startMode: 'pm2' | 'daemon' };
 
       if (startMode === 'pm2') {
         options.pm2 = true;
@@ -113,14 +113,14 @@ async function startWithPM2(): Promise<void> {
     logger.info('\nTo install PM2:');
     logger.log('  npm install -g pm2\n');
 
-    const { installPM2 } = await inquirer.prompt([
+    const { installPM2 } = (await inquirer.prompt([
       {
         type: 'confirm',
         name: 'installPM2',
         message: 'Would you like to install PM2 now?',
         default: true,
       },
-    ]);
+    ])) as { installPM2: boolean };
 
     if (installPM2) {
       logger.info('Installing PM2...');
@@ -145,12 +145,18 @@ async function startWithPM2(): Promise<void> {
     }
   }
 
-  let existingProcess: any = null;
+  interface PM2ProcessInfo {
+    name?: string;
+    pid?: number;
+    pm2_env?: { status?: string };
+  }
+
+  let existingProcess: PM2ProcessInfo | undefined;
   try {
     const pm2List = spawn('pm2', ['jlist'], { stdio: 'pipe' });
     let output = '';
 
-    pm2List.stdout.on('data', (data) => {
+    pm2List.stdout.on('data', (data: Buffer) => {
       output += data.toString();
     });
 
@@ -158,16 +164,18 @@ async function startWithPM2(): Promise<void> {
       pm2List.on('close', () => resolve());
     });
 
-    const processes = JSON.parse(output);
-    existingProcess = processes.find((p: any) => p.name === 'dbdock');
-  } catch (error) {}
+    const processes = JSON.parse(output) as PM2ProcessInfo[];
+    existingProcess = processes.find((p) => p.name === 'dbdock');
+  } catch {
+    // pm2 jlist is best-effort; fall through treating it as no existing process.
+  }
 
   if (existingProcess) {
     logger.warn('DBDock service is already running with PM2');
     logger.info(`Status: ${existingProcess.pm2_env?.status}`);
     logger.info(`PID: ${existingProcess.pid}\n`);
 
-    const { action } = await inquirer.prompt([
+    const { action } = (await inquirer.prompt([
       {
         type: 'list',
         name: 'action',
@@ -181,7 +189,7 @@ async function startWithPM2(): Promise<void> {
           { name: '❌ Cancel', value: 'cancel' },
         ],
       },
-    ]);
+    ])) as { action: 'restart' | 'stop' | 'cancel' };
 
     if (action === 'restart') {
       logger.info('Restarting DBDock service...');
@@ -269,14 +277,14 @@ async function startAsBackgroundProcess(): Promise<void> {
     logger.warn('DBDock service may already be running');
     logger.info('PID file exists: dbdock.pid');
 
-    const { shouldContinue } = await inquirer.prompt([
+    const { shouldContinue } = (await inquirer.prompt([
       {
         type: 'confirm',
         name: 'shouldContinue',
         message: 'Start anyway (will overwrite PID file)?',
         default: false,
       },
-    ]);
+    ])) as { shouldContinue: boolean };
 
     if (!shouldContinue) {
       logger.info('Cancelled');

@@ -1,5 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
+
+interface CloudinaryResource {
+  public_id: string;
+  bytes: number;
+  created_at: string;
+}
+
+interface CloudinaryResourcesResponse {
+  resources: CloudinaryResource[];
+}
 import {
   IStorageAdapter,
   UploadOptions,
@@ -117,20 +127,20 @@ export class CloudinaryStorageAdapter implements IStorageAdapter {
         ? `${this.folder}/${options.prefix}`
         : this.folder;
 
-      const result = await cloudinary.api.resources({
+      const result = (await cloudinary.api.resources({
         type: 'upload',
         resource_type: 'raw',
         prefix: searchPrefix,
         max_results: options?.maxKeys || 500,
         next_cursor: options?.startAfter,
-      });
+      })) as unknown as CloudinaryResourcesResponse;
 
       if (!result.resources || result.resources.length === 0) {
         this.logger.warn(`No resources found with prefix: ${searchPrefix}`);
         return [];
       }
 
-      return result.resources.map((resource: any) => ({
+      return result.resources.map((resource) => ({
         key: resource.public_id,
         size: resource.bytes,
         lastModified: new Date(resource.created_at),
@@ -160,14 +170,14 @@ export class CloudinaryStorageAdapter implements IStorageAdapter {
     }
   }
 
-  async generatePresignedUrl(options: PresignedUrlOptions): Promise<string> {
+  generatePresignedUrl(options: PresignedUrlOptions): Promise<string> {
     try {
       const url = cloudinary.url(options.key, {
         resource_type: 'raw',
         type: 'upload',
       });
 
-      return url;
+      return Promise.resolve(url);
     } catch (error) {
       const friendlyMessage = this.getFriendlyError(error);
       this.logger.error(
@@ -186,7 +196,8 @@ export class CloudinaryStorageAdapter implements IStorageAdapter {
       });
       return true;
     } catch (error) {
-      if (error.error?.http_code === 404) {
+      const e = error as { error?: { http_code?: number } };
+      if (e.error?.http_code === 404) {
         return false;
       }
       throw error;
@@ -194,7 +205,10 @@ export class CloudinaryStorageAdapter implements IStorageAdapter {
   }
 
   private getFriendlyError(error: unknown): string {
-    const err = error as any;
+    const err = error as {
+      message?: string;
+      error?: { http_code?: number };
+    };
     const message = err?.message || '';
     const httpCode = err?.error?.http_code;
 

@@ -209,26 +209,29 @@ export class AlertService {
     let color = '#36a64f'; // Green for success
     let title = 'DBDock Alert';
     let text = '';
+    const d = context.details ?? {};
+    const s = (key: string): string =>
+      d[key] === undefined ? '' : String(d[key] as string | number | boolean);
 
     switch (context.type) {
       case AlertType.BACKUP_SUCCESS:
         title = '✅ Backup Successful';
-        text = `Database: *${context.details?.database}*\nSize: ${context.details?.size} MB\nDuration: ${context.details?.duration}s`;
+        text = `Database: *${s('database')}*\nSize: ${s('size')} MB\nDuration: ${s('duration')}s`;
         break;
       case AlertType.BACKUP_FAILURE:
         color = '#dc3545'; // Red for failure
         title = '❌ Backup Failed';
-        text = `Database: *${context.details?.database}*\nError: ${context.details?.error}`;
+        text = `Database: *${s('database')}*\nError: ${s('error')}`;
         break;
       case AlertType.RETENTION_CLEANUP:
         color = '#17a2b8'; // Blue for info
         title = '🧹 Retention Cleanup';
-        text = `Deleted ${context.details?.backupsDeleted} backups\nFreed ${context.details?.spaceFreed} MB`;
+        text = `Deleted ${s('backupsDeleted')} backups\nFreed ${s('spaceFreed')} MB`;
         break;
       case AlertType.STORAGE_ERROR:
         color = '#ffc107'; // Yellow for warning
         title = '⚠️ Storage Error';
-        text = `Error: ${context.details?.error}`;
+        text = `Error: ${s('error')}`;
         break;
     }
 
@@ -287,8 +290,12 @@ export class AlertService {
       event: context.type,
       timestamp: new Date().toISOString(),
       status: statusMap[context.type],
-      database: context.metadata?.database || context.details?.database,
-      backupId: context.metadata?.id || context.details?.backupId,
+      database:
+        context.metadata?.database ||
+        (context.details?.database as string | undefined),
+      backupId:
+        context.metadata?.id ||
+        (context.details?.backupId as string | undefined),
       message: this.getAlertMessage(context),
       details: context.details || {},
       downloadUrl: context.downloadUrl,
@@ -308,15 +315,18 @@ export class AlertService {
   }
 
   private getAlertMessage(context: AlertContext): string {
+    const d = context.details ?? {};
+    const s = (key: string): string =>
+      d[key] === undefined ? '' : String(d[key] as string | number | boolean);
     switch (context.type) {
       case AlertType.BACKUP_SUCCESS:
-        return `Backup completed successfully for database ${context.details?.database}`;
+        return `Backup completed successfully for database ${s('database')}`;
       case AlertType.BACKUP_FAILURE:
-        return `Backup failed for database ${context.details?.database}: ${context.details?.error}`;
+        return `Backup failed for database ${s('database')}: ${s('error')}`;
       case AlertType.RETENTION_CLEANUP:
-        return `Retention cleanup: ${context.details?.backupsDeleted} backups deleted`;
+        return `Retention cleanup: ${s('backupsDeleted')} backups deleted`;
       case AlertType.STORAGE_ERROR:
-        return `Storage error: ${context.details?.error}`;
+        return `Storage error: ${s('error')}`;
     }
   }
 

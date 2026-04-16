@@ -21,11 +21,11 @@ export function importConfig(filePath: string): MigrationPlan {
   const content = readFileSync(filePath, 'utf-8');
   const ext = filePath.split('.').pop()?.toLowerCase();
 
-  let data: any;
+  let data: Partial<MigrationPlan>;
   if (ext === 'yaml' || ext === 'yml') {
-    data = yaml.load(content);
+    data = yaml.load(content) as Partial<MigrationPlan>;
   } else {
-    data = JSON.parse(content);
+    data = JSON.parse(content) as Partial<MigrationPlan>;
   }
 
   if (!data.version || !data.direction || !data.source || !data.target) {
@@ -35,7 +35,7 @@ export function importConfig(filePath: string): MigrationPlan {
   return data as MigrationPlan;
 }
 
-function sanitizePlanForExport(plan: MigrationPlan): any {
+function sanitizePlanForExport(plan: MigrationPlan): Record<string, unknown> {
   return {
     version: plan.version,
     direction: plan.direction,

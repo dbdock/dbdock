@@ -25,14 +25,15 @@ export class LocalStorageAdapter implements IStorageAdapter {
 
   constructor(basePath: string) {
     this.basePath = basePath;
-    this.ensureBasePathExists();
+    void this.ensureBasePathExists();
   }
 
   private async ensureBasePathExists(): Promise<void> {
     try {
       await mkdir(this.basePath, { recursive: true });
     } catch (error) {
-      this.logger.error(`Failed to create base path: ${error.message}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to create base path: ${msg}`);
       throw error;
     }
   }
@@ -96,17 +97,19 @@ export class LocalStorageAdapter implements IStorageAdapter {
           this.logger.log(`Uploaded ${options.key} to local storage`);
           resolve({ key: options.key });
         } catch (error) {
-          reject(error);
+          reject(error instanceof Error ? error : new Error(String(error)));
         }
       };
 
       stream.on('error', handleError);
       writeStream.on('error', handleError);
-      writeStream.on('finish', handleFinish);
+      writeStream.on('finish', () => {
+        void handleFinish();
+      });
       writeStream.on('close', () => {
         if (!finished && !hasError) {
           this.logger.warn('WriteStream closed without finish event');
-          handleFinish();
+          void handleFinish();
         }
       });
 
@@ -119,14 +122,14 @@ export class LocalStorageAdapter implements IStorageAdapter {
     });
   }
 
-  async downloadStream(options: DownloadOptions): Promise<Readable> {
+  downloadStream(options: DownloadOptions): Promise<Readable> {
     const fullPath = this.getFullPath(options.key);
 
     if (!fs.existsSync(fullPath)) {
-      throw new Error(`Object not found: ${options.key}`);
+      return Promise.reject(new Error(`Object not found: ${options.key}`));
     }
 
-    return fs.createReadStream(fullPath);
+    return Promise.resolve(fs.createReadStream(fullPath));
   }
 
   async listObjects(options?: ListOptions): Promise<StorageObject[]> {
@@ -183,7 +186,7 @@ export class LocalStorageAdapter implements IStorageAdapter {
             metadataPath,
             'utf-8',
           );
-          metadata = JSON.parse(metadataContent);
+          metadata = JSON.parse(metadataContent) as Record<string, string>;
         }
 
         objects.push({
@@ -210,13 +213,13 @@ export class LocalStorageAdapter implements IStorageAdapter {
     }
   }
 
-  async generatePresignedUrl(options: PresignedUrlOptions): Promise<string> {
+  generatePresignedUrl(options: PresignedUrlOptions): Promise<string> {
     const fullPath = this.getFullPath(options.key);
-    return `file://${fullPath}`;
+    return Promise.resolve(`file://${fullPath}`);
   }
 
-  async objectExists(key: string): Promise<boolean> {
+  objectExists(key: string): Promise<boolean> {
     const fullPath = this.getFullPath(key);
-    return fs.existsSync(fullPath);
+    return Promise.resolve(fs.existsSync(fullPath));
   }
 }

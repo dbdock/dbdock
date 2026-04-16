@@ -59,8 +59,8 @@ describe('DBDockConfigService', () => {
     it('should load config from environment when file does not exist', () => {
       mockFs.existsSync.mockReturnValue(false);
       mockConfigService.get.mockImplementation(
-        (key: string, defaultValue?: any) => {
-          const env: Record<string, any> = {
+        (key: string, defaultValue?: unknown) => {
+          const env: Record<string, unknown> = {
             DBDOCK_CONFIG_PATH: 'dbdock.config.json',
             DB_HOST: 'localhost',
             DB_PORT: 5432,

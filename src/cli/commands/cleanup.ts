@@ -38,14 +38,14 @@ export async function cleanupCommand(
       logger.log(`  - Max age: ${defaultConfig.maxAgeDays} days`);
       logger.log(`  - Min backups: ${defaultConfig.minBackups}\n`);
 
-      const { proceed } = await inquirer.prompt([
+      const { proceed } = (await inquirer.prompt([
         {
           type: 'confirm',
           name: 'proceed',
           message: 'Use default retention policy?',
           default: false,
         },
-      ]);
+      ])) as { proceed: boolean };
 
       if (!proceed) {
         logger.info('Cleanup cancelled');
@@ -170,14 +170,14 @@ export async function cleanupCommand(
 
     if (!options.force) {
       console.log('');
-      const { confirm } = await inquirer.prompt([
+      const { confirm } = (await inquirer.prompt([
         {
           type: 'confirm',
           name: 'confirm',
           message: `Delete ${toDelete.length} backup(s)?`,
           default: false,
         },
-      ]);
+      ])) as { confirm: boolean };
 
       if (!confirm) {
         logger.warn('Cleanup cancelled');

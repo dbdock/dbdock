@@ -84,19 +84,23 @@ export const DEFAULT_TEMPLATES: Record<AlertType, AlertTemplate> = {
 
 export function renderTemplate(
   template: string,
-  context: Record<string, any>,
+  context: Record<string, unknown>,
 ): string {
   let rendered = template;
 
   for (const [key, value] of Object.entries(context)) {
     const stringValue =
-      value !== undefined && value !== null ? String(value) : '';
+      value !== undefined && value !== null
+        ? typeof value === 'object'
+          ? JSON.stringify(value)
+          : String(value as string | number | boolean)
+        : '';
     rendered = rendered.replace(new RegExp(`{{${key}}}`, 'g'), stringValue);
   }
 
   rendered = rendered.replace(
     /{{#if\s+(\w+)}}([\s\S]*?){{\/if}}/g,
-    (match, key, content) => {
+    (_match, key: string, content: string) => {
       return context[key] ? content : '';
     },
   );

@@ -277,14 +277,14 @@ export async function copydbCommand(
 
   console.log('');
 
-  const { confirm } = await inquirer.prompt([
+  const { confirm } = (await inquirer.prompt([
     {
       type: 'confirm',
       name: 'confirm',
       message: `Copy ${source.database} → ${target.database}?`,
       default: false,
     },
-  ]);
+  ])) as { confirm: boolean };
 
   if (!confirm) {
     logger.warn('Copy cancelled');

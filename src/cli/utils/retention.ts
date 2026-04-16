@@ -1,7 +1,4 @@
-import {
-  IStorageAdapter,
-  StorageObject,
-} from '../../storage/storage.interface';
+import { IStorageAdapter } from '../../storage/storage.interface';
 import { logger } from './logger';
 
 export interface RetentionConfig {

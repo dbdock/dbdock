@@ -65,19 +65,21 @@ export async function deleteCommand(
           spinner.fail('R2 endpoint is required');
           process.exit(1);
         }
-        const accountIdDelete =
-          config.storage.s3.endpoint.match(/https:\/\/([^.]+)/)?.[1];
-        if (!accountIdDelete) {
-          spinner.fail('Invalid R2 endpoint format');
-          process.exit(1);
+        {
+          const accountIdDelete =
+            config.storage.s3.endpoint.match(/https:\/\/([^.]+)/)?.[1];
+          if (!accountIdDelete) {
+            spinner.fail('Invalid R2 endpoint format');
+            process.exit(1);
+          }
+          adapter = new R2StorageAdapter({
+            accountId: accountIdDelete,
+            bucket: config.storage.s3.bucket || '',
+            accessKeyId: config.storage.s3.accessKeyId,
+            secretAccessKey: config.storage.s3.secretAccessKey,
+          });
+          break;
         }
-        adapter = new R2StorageAdapter({
-          accountId: accountIdDelete,
-          bucket: config.storage.s3.bucket || '',
-          accessKeyId: config.storage.s3.accessKeyId,
-          secretAccessKey: config.storage.s3.secretAccessKey,
-        });
-        break;
 
       case 'cloudinary':
         if (
@@ -134,14 +136,14 @@ export async function deleteCommand(
     let backupsToDelete: string[] = [];
 
     if (options.all) {
-      const { confirm } = await inquirer.prompt([
+      const { confirm } = (await inquirer.prompt([
         {
           type: 'confirm',
           name: 'confirm',
           message: `Delete all ${objects.length} backup(s)? This action cannot be undone.`,
           default: false,
         },
-      ]);
+      ])) as { confirm: boolean };
 
       if (!confirm) {
         logger.warn('Delete cancelled');
@@ -158,14 +160,14 @@ export async function deleteCommand(
         process.exit(1);
       }
 
-      const { confirm } = await inquirer.prompt([
+      const { confirm } = (await inquirer.prompt([
         {
           type: 'confirm',
           name: 'confirm',
           message: `Delete backup "${backup.key}"? This action cannot be undone.`,
           default: false,
         },
-      ]);
+      ])) as { confirm: boolean };
 
       if (!confirm) {
         logger.warn('Delete cancelled');
@@ -174,7 +176,7 @@ export async function deleteCommand(
 
       backupsToDelete = [backup.key];
     } else {
-      const { action } = await inquirer.prompt([
+      const { action } = (await inquirer.prompt([
         {
           type: 'list',
           name: 'action',
@@ -185,17 +187,17 @@ export async function deleteCommand(
             { name: 'Delete all backups', value: 'all' },
           ],
         },
-      ]);
+      ])) as { action: 'specific' | 'multiple' | 'all' };
 
       if (action === 'all') {
-        const { confirm } = await inquirer.prompt([
+        const { confirm } = (await inquirer.prompt([
           {
             type: 'confirm',
             name: 'confirm',
             message: `Delete all ${objects.length} backup(s)? This action cannot be undone.`,
             default: false,
           },
-        ]);
+        ])) as { confirm: boolean };
 
         if (!confirm) {
           logger.warn('Delete cancelled');
@@ -204,7 +206,7 @@ export async function deleteCommand(
 
         backupsToDelete = objects.map((obj) => obj.key);
       } else if (action === 'specific') {
-        const { selectedBackup } = await inquirer.prompt([
+        const { selectedBackup } = (await inquirer.prompt([
           {
             type: 'list',
             name: 'selectedBackup',
@@ -214,16 +216,16 @@ export async function deleteCommand(
               value: obj.key,
             })),
           },
-        ]);
+        ])) as { selectedBackup: string };
 
-        const { confirm } = await inquirer.prompt([
+        const { confirm } = (await inquirer.prompt([
           {
             type: 'confirm',
             name: 'confirm',
             message: `Delete backup "${selectedBackup}"? This action cannot be undone.`,
             default: false,
           },
-        ]);
+        ])) as { confirm: boolean };
 
         if (!confirm) {
           logger.warn('Delete cancelled');
@@ -232,7 +234,7 @@ export async function deleteCommand(
 
         backupsToDelete = [selectedBackup];
       } else {
-        const { selectedBackups } = await inquirer.prompt([
+        const { selectedBackups } = (await inquirer.prompt([
           {
             type: 'checkbox',
             name: 'selectedBackups',
@@ -242,21 +244,21 @@ export async function deleteCommand(
               value: obj.key,
             })),
           },
-        ]);
+        ])) as { selectedBackups: string[] };
 
         if (selectedBackups.length === 0) {
           logger.warn('No backups selected');
           return;
         }
 
-        const { confirm } = await inquirer.prompt([
+        const { confirm } = (await inquirer.prompt([
           {
             type: 'confirm',
             name: 'confirm',
             message: `Delete ${selectedBackups.length} backup(s)? This action cannot be undone.`,
             default: false,
           },
-        ]);
+        ])) as { confirm: boolean };
 
         if (!confirm) {
           logger.warn('Delete cancelled');

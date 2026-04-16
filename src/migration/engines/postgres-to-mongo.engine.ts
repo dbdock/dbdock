@@ -6,12 +6,13 @@ import {
   MigrationResult,
   TableMigrationResult,
 } from '../types';
+import { MongoDocument, PostgresRow } from '../row.types';
 
 interface MigrationError {
   collection: string;
   sourceId: string;
   error: string;
-  data?: any;
+  data?: unknown;
 }
 
 export async function executePostgresToMongo(
@@ -91,22 +92,22 @@ async function migrateTable(
     whereClause = buildIncrementalWhere(plan.options.since);
   }
 
-  const countResult = await pgPool.query(
+  const countResult = await pgPool.query<{ count: number }>(
     `SELECT count(*)::integer AS count FROM "${mapping.primaryTable}" ${whereClause}`,
   );
-  const totalCount = parseInt(countResult.rows[0]?.count || '0');
+  const totalCount = Number(countResult.rows[0]?.count ?? 0);
 
   let processed = 0;
   let failedCount = 0;
   let offset = 0;
 
   while (offset < totalCount) {
-    const rows = await pgPool.query(
+    const rows = await pgPool.query<PostgresRow>(
       `SELECT * FROM "${mapping.primaryTable}" ${whereClause} ORDER BY 1 LIMIT $1 OFFSET $2`,
       [batchSize, offset],
     );
 
-    const documents: any[] = [];
+    const documents: MongoDocument[] = [];
 
     for (const row of rows.rows) {
       try {
@@ -165,9 +166,9 @@ async function migrateTable(
 async function buildDocument(
   pgPool: Pool,
   mapping: DocumentMapping,
-  row: any,
-): Promise<any> {
-  const doc: any = {};
+  row: PostgresRow,
+): Promise<MongoDocument> {
+  const doc: Record<string, unknown> = {};
 
   for (const [pgCol, mongoField] of Object.entries(mapping.fieldMappings)) {
     if (pgCol.startsWith('_')) continue;
@@ -182,7 +183,7 @@ async function buildDocument(
   }
 
   for (const embed of mapping.embeddings) {
-    const childRows = await pgPool.query(
+    const childRows = await pgPool.query<PostgresRow>(
       `SELECT * FROM "${embed.sourceTable}" WHERE "${embed.foreignKey}" = $1`,
       [getPrimaryKeyValue(row)],
     );
@@ -203,7 +204,7 @@ async function buildDocument(
     if (!pgCol.startsWith('_')) continue;
     const otherTable = pgCol.slice(1);
 
-    const relatedRows = await pgPool.query(
+    const relatedRows = await pgPool.query<PostgresRow>(
       `SELECT * FROM "${otherTable}" ORDER BY 1`,
     );
 
@@ -215,38 +216,43 @@ async function buildDocument(
     });
   }
 
-  return doc;
+  return doc as MongoDocument;
 }
 
-function convertToMongoId(value: any): any {
+function convertToMongoId(value: unknown): unknown {
   if (typeof value === 'string' && /^[a-f0-9]{24}$/.test(value)) {
     return new ObjectId(value);
   }
   return value;
 }
 
-function convertPgValueToMongo(value: any): any {
+function convertPgValueToMongo(value: unknown): unknown {
   if (value === null || value === undefined) return null;
   if (value instanceof Date) return value;
   if (Buffer.isBuffer(value)) return value;
-  if (typeof value === 'object' && !Array.isArray(value)) return value;
   if (Array.isArray(value)) return value.map(convertPgValueToMongo);
+  if (typeof value === 'object') return value;
   return value;
 }
 
-function convertRowToEmbeddedDoc(row: any, excludeFk: string): any {
-  const doc: any = {};
+function convertRowToEmbeddedDoc(
+  row: PostgresRow,
+  excludeFk: string,
+): Record<string, unknown> {
+  const doc: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(row)) {
     if (key === excludeFk) continue;
     if (key === 'id') continue;
-    const camelKey = key.replace(/_([a-z])/g, (_, l) => l.toUpperCase());
+    const camelKey = key.replace(/_([a-z])/g, (_, l: string) =>
+      l.toUpperCase(),
+    );
     doc[camelKey] = convertPgValueToMongo(value);
   }
   return doc;
 }
 
-function getPrimaryKeyValue(row: any): any {
-  return row.id || row[Object.keys(row)[0]];
+function getPrimaryKeyValue(row: PostgresRow): unknown {
+  return row.id ?? row[Object.keys(row)[0]];
 }
 
 function buildIncrementalWhere(since: string): string {

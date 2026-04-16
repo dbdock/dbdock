@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Transform, pipeline } from 'stream';
+import { Transform } from 'stream';
 import { createBrotliCompress, createBrotliDecompress, constants } from 'zlib';
 
 @Injectable()

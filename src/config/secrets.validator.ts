@@ -114,7 +114,7 @@ export function mergeSecretsIntoConfig(
   config: Record<string, unknown>,
   secrets: Record<string, string | undefined>,
 ): Record<string, unknown> {
-  const merged = JSON.parse(JSON.stringify(config));
+  const merged = JSON.parse(JSON.stringify(config)) as Record<string, unknown>;
 
   for (const [fieldPath, value] of Object.entries(secrets)) {
     if (value !== undefined) {

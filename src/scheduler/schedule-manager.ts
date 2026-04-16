@@ -7,6 +7,13 @@ export interface Schedule {
   enabled: boolean;
 }
 
+interface ScheduleConfigFile {
+  backup?: {
+    schedules?: Schedule[];
+  };
+  [key: string]: unknown;
+}
+
 export class ScheduleManager {
   private configPath: string;
 
@@ -14,7 +21,7 @@ export class ScheduleManager {
     this.configPath = configPath || join(process.cwd(), 'dbdock.config.json');
   }
 
-  private loadConfig(): any {
+  private loadConfig(): ScheduleConfigFile {
     if (!existsSync(this.configPath)) {
       throw new Error(
         `Configuration file not found: ${this.configPath}. Run "npx dbdock init" first.`,
@@ -23,7 +30,7 @@ export class ScheduleManager {
 
     try {
       const content = readFileSync(this.configPath, 'utf-8');
-      return JSON.parse(content);
+      return JSON.parse(content) as ScheduleConfigFile;
     } catch (error) {
       throw new Error(
         `Failed to parse configuration file: ${error instanceof Error ? error.message : String(error)}`,
@@ -31,7 +38,7 @@ export class ScheduleManager {
     }
   }
 
-  private saveConfig(config: any): void {
+  private saveConfig(config: ScheduleConfigFile): void {
     try {
       writeFileSync(this.configPath, JSON.stringify(config, null, 2));
     } catch (error) {

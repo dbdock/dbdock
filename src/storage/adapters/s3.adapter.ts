@@ -196,7 +196,8 @@ export class S3StorageAdapter implements IStorageAdapter {
       await this.client.send(command);
       return true;
     } catch (error) {
-      if (error.name === 'NotFound') {
+      const e = error as { name?: string };
+      if (e.name === 'NotFound') {
         return false;
       }
       throw error;
@@ -204,9 +205,9 @@ export class S3StorageAdapter implements IStorageAdapter {
   }
 
   private getFriendlyError(error: unknown): string {
-    const err = error as any;
+    const err = error as { code?: string; message?: string };
     const code = err?.code;
-    const message = err?.message || '';
+    const message: string = err?.message || '';
 
     if (
       code === 'EPROTO' ||

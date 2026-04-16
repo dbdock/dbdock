@@ -17,7 +17,7 @@ export interface AlertContext {
   metadata?: BackupMetadata;
   error?: Error;
   downloadUrl?: string;
-  details?: Record<string, any>;
+  details?: Record<string, unknown>;
 }
 
 export interface EmailOptions {

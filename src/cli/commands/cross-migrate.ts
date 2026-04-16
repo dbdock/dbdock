@@ -16,6 +16,9 @@ import {
   TableMapping,
   DocumentMapping,
   DEFAULT_MIGRATION_OPTIONS,
+  ParsedDatabaseUrl,
+  MongoAnalysisResult,
+  PgAnalysisResult,
 } from '../../migration/types';
 
 interface MigrateOptions {
@@ -43,7 +46,8 @@ export async function crossMigrateCommand(
     return;
   }
 
-  let sourceParsed, targetParsed;
+  let sourceParsed: ParsedDatabaseUrl;
+  let targetParsed: ParsedDatabaseUrl;
   try {
     sourceParsed = parseDatabaseUrl(sourceUrl);
     targetParsed = parseDatabaseUrl(targetUrl);
@@ -82,7 +86,7 @@ export async function crossMigrateCommand(
 
   const spinner = ora('Analyzing source database...').start();
 
-  let analysis;
+  let analysis: MongoAnalysisResult | PgAnalysisResult;
   try {
     analysis = await analyzeDatabase(sourceUrl);
   } catch (error) {
@@ -134,7 +138,7 @@ export async function crossMigrateCommand(
     return;
   }
 
-  const { action } = await inquirer.prompt([
+  const { action } = (await inquirer.prompt([
     {
       type: 'list',
       name: 'action',
@@ -145,7 +149,7 @@ export async function crossMigrateCommand(
         { name: 'Cancel', value: 'cancel' },
       ],
     },
-  ]);
+  ])) as { action: 'accept' | 'export' | 'cancel' };
 
   if (action === 'cancel') {
     logger.warn('Migration cancelled');
@@ -153,14 +157,14 @@ export async function crossMigrateCommand(
   }
 
   if (action === 'export') {
-    const { path } = await inquirer.prompt([
+    const { path } = (await inquirer.prompt([
       {
         type: 'input',
         name: 'path',
         message: 'Config file path:',
         default: './migration.yaml',
       },
-    ]);
+    ])) as { path: string };
     try {
       exportConfig(plan, path);
       logger.success(`Config exported to ${path}`);
@@ -209,14 +213,14 @@ async function runFromConfig(
   console.log('');
   displayMigrationPlan(plan);
 
-  const { confirm } = await inquirer.prompt([
+  const { confirm } = (await inquirer.prompt([
     {
       type: 'confirm',
       name: 'confirm',
       message: 'Execute migration with this config?',
       default: false,
     },
-  ]);
+  ])) as { confirm: boolean };
 
   if (!confirm) {
     logger.warn('Migration cancelled');

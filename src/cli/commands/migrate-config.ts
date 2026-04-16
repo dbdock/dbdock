@@ -17,7 +17,12 @@ interface SecretsMap {
   [key: string]: string;
 }
 
-export async function migrateConfigCommand(): Promise<void> {
+export function migrateConfigCommand(): Promise<void> {
+  return runMigrateConfig();
+}
+
+async function runMigrateConfig(): Promise<void> {
+  await Promise.resolve();
   logger.info('🔐 DBDock Config Migration Tool');
   logger.info('');
 
@@ -30,7 +35,7 @@ export async function migrateConfigCommand(): Promise<void> {
   }
 
   const configContent = readFileSync(configPath, 'utf-8');
-  const config = JSON.parse(configContent);
+  const config = JSON.parse(configContent) as Record<string, unknown>;
 
   const secretFields = hasSecretsInConfig(config);
 
@@ -108,23 +113,24 @@ function removeSecretsFromConfigData(
   config: Record<string, unknown>,
   secretFields: string[],
 ): Record<string, unknown> {
-  const cleaned = JSON.parse(JSON.stringify(config));
+  const cleaned = JSON.parse(JSON.stringify(config)) as Record<string, unknown>;
 
   for (const field of secretFields) {
     const parts = field.split('.');
-    let current = cleaned;
+    let current: Record<string, unknown> = cleaned;
 
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
-      if (current[part] && typeof current[part] === 'object') {
-        current = current[part] as Record<string, unknown>;
+      const next = current[part];
+      if (next && typeof next === 'object') {
+        current = next as Record<string, unknown>;
       } else {
         break;
       }
     }
 
     const lastPart = parts[parts.length - 1];
-    if (current && typeof current === 'object' && lastPart in current) {
+    if (lastPart in current) {
       delete current[lastPart];
     }
   }

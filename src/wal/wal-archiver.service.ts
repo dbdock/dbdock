@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { DBDockConfigService } from '../config/config.service';
 import { StorageService } from '../storage/storage.service';
 import { CryptoService } from '../crypto/crypto.service';
@@ -12,8 +12,7 @@ import {
   WalStatus,
 } from './wal.types';
 import * as fs from 'fs';
-import * as path from 'path';
-import { Readable } from 'stream';
+import { Readable, Writable } from 'stream';
 import { createHash } from 'crypto';
 
 @Injectable()
@@ -40,7 +39,7 @@ export class WalArchiverService implements OnModuleInit {
     }
   }
 
-  private async setupWalArchiving(): Promise<void> {
+  private setupWalArchiving(): Promise<void> {
     const pgConfig = this.configService.get('postgres');
 
     this.logger.log(
@@ -49,6 +48,7 @@ export class WalArchiverService implements OnModuleInit {
     this.logger.log(
       'Note: Ensure PostgreSQL archive_mode is enabled and archive_command is configured',
     );
+    return Promise.resolve();
   }
 
   async archiveWalFile(options: WalArchiveOptions): Promise<WalArchiveResult> {
@@ -84,15 +84,16 @@ export class WalArchiverService implements OnModuleInit {
       streams.push(compressStream);
 
       if (this.cryptoService.isEnabled()) {
-        const { stream: encryptStream, metadata: encryptionMetadata } =
+        const { stream: encryptStream } =
           this.cryptoService.createEncryptStream();
         streams.push(encryptStream);
       }
 
-      const combinedStream = streams.reduce(
-        (prev, curr) => prev.pipe(curr as any),
+      const combinedStream = streams.reduce<Readable>(
+        (prev, curr) =>
+          prev.pipe(curr as unknown as Writable) as unknown as Readable,
         streams[0],
-      ) as Readable;
+      );
 
       const storageAdapter = this.storageService.getAdapter();
       await storageAdapter.uploadStream(combinedStream, {
@@ -252,7 +253,7 @@ export class WalArchiverService implements OnModuleInit {
 
       const metadataJson = Buffer.concat(chunks).toString('utf-8');
       return JSON.parse(metadataJson) as WalMetadata;
-    } catch (error) {
+    } catch {
       return null;
     }
   }

@@ -22,10 +22,16 @@ export interface CLIConfig {
 
     password?: string;
     database?: string;
+    sqlitePath?: string;
   };
   storage: {
     provider: string;
     local?: { path: string };
+    localPath?: string;
+    bucket?: string;
+    endpoint?: string;
+    accessKeyId?: string;
+    secretAccessKey?: string;
     s3?: {
       bucket: string;
       region: string;
@@ -91,6 +97,10 @@ export interface CLIConfig {
     };
   };
 }
+
+export type ScheduleEntry = NonNullable<
+  NonNullable<CLIConfig['backup']>['schedules']
+>[number];
 
 export function getConfigPath(): string {
   return process.env.DBDOCK_CONFIG_PATH || join(process.cwd(), CONFIG_FILE);

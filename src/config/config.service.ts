@@ -1,17 +1,89 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService as NestConfigService } from '@nestjs/config';
 import { plainToInstance } from 'class-transformer';
-import { validateSync } from 'class-validator';
-import { DBDockConfig, StorageProvider } from './config.schema';
+import { validateSync, ValidationError } from 'class-validator';
+import { DBDockConfig, ScheduleType, StorageProvider } from './config.schema';
 import * as fs from 'fs';
-import * as path from 'path';
+
+interface LegacyStorageBlock {
+  provider?: string;
+  local?: { path?: string };
+  localPath?: string;
+  bucket?: string;
+  endpoint?: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  s3?: {
+    bucket?: string;
+    endpoint?: string;
+    accessKeyId?: string;
+    secretAccessKey?: string;
+  };
+  r2?: {
+    bucket?: string;
+    endpoint?: string;
+    accessKeyId?: string;
+    secretAccessKey?: string;
+  };
+  cloudinary?: {
+    cloudName?: string;
+    apiKey?: string;
+    apiSecret?: string;
+  };
+  region?: string;
+  cloudinaryCloudName?: string;
+  cloudinaryApiKey?: string;
+  cloudinaryApiSecret?: string;
+}
+
+interface LegacyAlertsBlock {
+  email?: {
+    smtp?: {
+      host?: string;
+      port?: number;
+      auth?: { user?: string; pass?: string };
+    };
+    from?: string;
+    to?: string[];
+  };
+  slack?: { webhookUrl?: string };
+  webhook?: { url?: string } | string;
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpUser?: string;
+  smtpPass?: string;
+  from?: string;
+  to?: string[];
+  slackWebhook?: string;
+  customWebhook?: string;
+}
+
+interface ConfigInput {
+  database?: {
+    host?: string;
+    port?: number;
+    username?: string;
+    user?: string;
+    password?: string;
+    database?: string;
+  };
+  backup?: {
+    encryption?: { enabled?: boolean; key?: string; secret?: string };
+    schedules?: Array<{ cron: string }>;
+  };
+  postgres?: DBDockConfig['postgres'];
+  storage?: LegacyStorageBlock;
+  encryption?: DBDockConfig['encryption'];
+  schedule?: DBDockConfig['schedule'];
+  pitr?: DBDockConfig['pitr'];
+  alerts?: LegacyAlertsBlock;
+}
 import {
   loadSecretsFromEnv,
   mergeSecretsIntoConfig,
   hasSecretsInConfig,
   validateSecrets,
   formatMigrationInstructions,
-  ENV_VAR_MAPPING,
 } from './secrets.validator';
 import { checkFilePermissions } from './permissions.checker';
 import {
@@ -46,7 +118,7 @@ export class DBDockConfigService {
       configData = this.loadFromEnvironment();
     }
 
-    configData = this.transformCLIToProgrammatic(configData);
+    configData = this.transformCLIToProgrammatic(configData as ConfigInput);
 
     const envSecrets = loadSecretsFromEnv();
     configData = mergeSecretsIntoConfig(
@@ -102,7 +174,9 @@ export class DBDockConfigService {
             `   Fix with: chmod 600 ${configPath}\n`,
         );
       }
-    } catch {}
+    } catch {
+      // Permission check is best-effort; ignore failures.
+    }
   }
 
   private warnAboutLegacySecrets(configData: Record<string, unknown>): void {
@@ -119,7 +193,9 @@ export class DBDockConfigService {
    * Transforms CLI config format to programmatic format.
    * Supports both formats for backward compatibility.
    */
-  private transformCLIToProgrammatic(configData: any): any {
+  private transformCLIToProgrammatic(
+    configData: ConfigInput,
+  ): Partial<DBDockConfig> | ConfigInput {
     // If already in programmatic format, return as-is
     if (configData.postgres && !configData.database) {
       return configData;
@@ -132,7 +208,7 @@ export class DBDockConfigService {
       return configData;
     }
 
-    const transformed: any = {};
+    const transformed: Partial<DBDockConfig> = {};
 
     // Transform database -> postgres
     if (configData.database) {
@@ -150,55 +226,47 @@ export class DBDockConfigService {
 
     // Transform storage
     if (configData.storage) {
-      transformed.storage = {
-        provider: configData.storage.provider || 'local',
+      const src = configData.storage;
+      const storage: DBDockConfig['storage'] = {
+        provider: (src.provider as StorageProvider) || StorageProvider.LOCAL,
+        bucket: 'dbdock-backups',
       };
 
       // Handle nested local.path -> flat localPath
-      if (configData.storage.local?.path) {
-        transformed.storage.localPath = configData.storage.local.path;
-        transformed.storage.bucket = 'dbdock-backups'; // Required by schema
-      } else if (configData.storage.localPath) {
-        transformed.storage.localPath = configData.storage.localPath;
-        transformed.storage.bucket =
-          configData.storage.bucket || 'dbdock-backups';
+      if (src.local?.path) {
+        storage.localPath = src.local.path;
+      } else if (src.localPath) {
+        storage.localPath = src.localPath;
+        if (src.bucket) storage.bucket = src.bucket;
       }
 
       // Handle S3/R2 nested config
-      if (configData.storage.s3) {
-        transformed.storage.bucket = configData.storage.s3.bucket;
-        transformed.storage.endpoint = configData.storage.s3.endpoint;
-        transformed.storage.accessKeyId = configData.storage.s3.accessKeyId;
-        transformed.storage.secretAccessKey =
-          configData.storage.s3.secretAccessKey;
-      } else if (configData.storage.r2) {
-        transformed.storage.bucket = configData.storage.r2.bucket;
-        transformed.storage.endpoint = configData.storage.r2.endpoint;
-        transformed.storage.accessKeyId = configData.storage.r2.accessKeyId;
-        transformed.storage.secretAccessKey =
-          configData.storage.r2.secretAccessKey;
+      if (src.s3) {
+        if (src.s3.bucket) storage.bucket = src.s3.bucket;
+        storage.endpoint = src.s3.endpoint;
+        storage.accessKeyId = src.s3.accessKeyId;
+        storage.secretAccessKey = src.s3.secretAccessKey;
+      } else if (src.r2) {
+        if (src.r2.bucket) storage.bucket = src.r2.bucket;
+        storage.endpoint = src.r2.endpoint;
+        storage.accessKeyId = src.r2.accessKeyId;
+        storage.secretAccessKey = src.r2.secretAccessKey;
       } else {
         // Copy flat storage properties
-        if (configData.storage.bucket)
-          transformed.storage.bucket = configData.storage.bucket;
-        if (configData.storage.endpoint)
-          transformed.storage.endpoint = configData.storage.endpoint;
-        if (configData.storage.accessKeyId)
-          transformed.storage.accessKeyId = configData.storage.accessKeyId;
-        if (configData.storage.secretAccessKey)
-          transformed.storage.secretAccessKey =
-            configData.storage.secretAccessKey;
+        if (src.bucket) storage.bucket = src.bucket;
+        if (src.endpoint) storage.endpoint = src.endpoint;
+        if (src.accessKeyId) storage.accessKeyId = src.accessKeyId;
+        if (src.secretAccessKey) storage.secretAccessKey = src.secretAccessKey;
       }
 
       // Handle Cloudinary
-      if (configData.storage.cloudinary) {
-        transformed.storage.cloudinaryCloudName =
-          configData.storage.cloudinary.cloudName;
-        transformed.storage.cloudinaryApiKey =
-          configData.storage.cloudinary.apiKey;
-        transformed.storage.cloudinaryApiSecret =
-          configData.storage.cloudinary.apiSecret;
+      if (src.cloudinary) {
+        storage.cloudinaryCloudName = src.cloudinary.cloudName;
+        storage.cloudinaryApiKey = src.cloudinary.apiKey;
+        storage.cloudinaryApiSecret = src.cloudinary.apiSecret;
       }
+
+      transformed.storage = storage;
     }
 
     // Transform backup.encryption -> encryption
@@ -227,7 +295,7 @@ export class DBDockConfigService {
     ) {
       const firstSchedule = configData.backup.schedules[0];
       transformed.schedule = {
-        type: 'cron',
+        type: ScheduleType.CRON,
         expression: firstSchedule.cron,
       };
     } else if (configData.schedule) {
@@ -241,28 +309,42 @@ export class DBDockConfigService {
     };
 
     // Transform alerts
-    if (configData.alerts?.email || configData.alerts?.slack) {
-      transformed.alerts = {};
+    const alerts = configData.alerts;
+    if (alerts && (alerts.email || alerts.slack)) {
+      const out: DBDockConfig['alerts'] = {};
 
-      if (configData.alerts.email) {
-        transformed.alerts.smtpHost = configData.alerts.email.smtp?.host;
-        transformed.alerts.smtpPort = configData.alerts.email.smtp?.port;
-        transformed.alerts.smtpUser = configData.alerts.email.smtp?.auth?.user;
-        transformed.alerts.smtpPass = configData.alerts.email.smtp?.auth?.pass;
-        transformed.alerts.from = configData.alerts.email.from;
-        transformed.alerts.to = configData.alerts.email.to;
+      if (alerts.email) {
+        out.smtpHost = alerts.email.smtp?.host;
+        out.smtpPort = alerts.email.smtp?.port;
+        out.smtpUser = alerts.email.smtp?.auth?.user;
+        out.smtpPass = alerts.email.smtp?.auth?.pass;
+        out.from = alerts.email.from;
+        out.to = alerts.email.to;
       }
 
-      if (configData.alerts.slack) {
-        transformed.alerts.slackWebhook = configData.alerts.slack.webhookUrl;
+      if (alerts.slack) {
+        out.slackWebhook = alerts.slack.webhookUrl;
       }
 
-      if (configData.alerts.webhook) {
-        transformed.alerts.customWebhook =
-          configData.alerts.webhook.url || configData.alerts.webhook;
+      if (alerts.webhook) {
+        out.customWebhook =
+          typeof alerts.webhook === 'string'
+            ? alerts.webhook
+            : alerts.webhook.url;
       }
-    } else if (configData.alerts) {
-      transformed.alerts = configData.alerts;
+
+      transformed.alerts = out;
+    } else if (alerts) {
+      transformed.alerts = {
+        smtpHost: alerts.smtpHost,
+        smtpPort: alerts.smtpPort,
+        smtpUser: alerts.smtpUser,
+        smtpPass: alerts.smtpPass,
+        from: alerts.from,
+        to: alerts.to,
+        slackWebhook: alerts.slackWebhook,
+        customWebhook: alerts.customWebhook,
+      };
     }
 
     return transformed;
@@ -367,7 +449,7 @@ export class DBDockConfigService {
     return this.config;
   }
 
-  private formatValidationErrors(errors: any[]): string {
+  private formatValidationErrors(errors: ValidationError[]): string {
     const fieldErrors: string[] = [];
     const suggestions: string[] = [];
 
@@ -391,12 +473,11 @@ export class DBDockConfigService {
 
     errors.forEach((error) => {
       const field = error.property;
-      const constraints = error.constraints || {};
-      const value = error.value;
+      const constraints: Record<string, string> = error.constraints ?? {};
 
       // Handle top-level property errors
       if (Object.keys(constraints).length > 0) {
-        Object.entries(constraints).forEach(([key, msg]: [string, any]) => {
+        Object.entries(constraints).forEach(([key, msg]) => {
           if (
             key === 'whitelistValidation' &&
             msg.includes('should not exist')
@@ -436,43 +517,42 @@ export class DBDockConfigService {
 
       // Handle nested property errors (children)
       if (error.children && error.children.length > 0) {
-        error.children.forEach((child: any) => {
+        error.children.forEach((child: ValidationError) => {
           const childField = `${field}.${child.property}`;
-          const childConstraints = child.constraints || {};
-          const childValue = child.value;
+          const childConstraints: Record<string, string> =
+            child.constraints ?? {};
+          const childValue: unknown = child.value;
 
           if (Object.keys(childConstraints).length > 0) {
-            Object.entries(childConstraints).forEach(
-              ([key, msg]: [string, any]) => {
-                if (
-                  key === 'whitelistValidation' &&
-                  msg.includes('should not exist')
+            Object.entries(childConstraints).forEach(([key, msg]) => {
+              if (
+                key === 'whitelistValidation' &&
+                msg.includes('should not exist')
+              ) {
+                // Unknown nested property
+                if (field === 'storage' && child.property === 'local') {
+                  fieldErrors.push(
+                    `  ✗ ${childField}: Should be 'storage.localPath' (flat string) not 'storage.local.path' (nested object)`,
+                  );
+                } else if (
+                  field === 'postgres' &&
+                  child.property === 'username'
                 ) {
-                  // Unknown nested property
-                  if (field === 'storage' && child.property === 'local') {
-                    fieldErrors.push(
-                      `  ✗ ${childField}: Should be 'storage.localPath' (flat string) not 'storage.local.path' (nested object)`,
-                    );
-                  } else if (
-                    field === 'postgres' &&
-                    child.property === 'username'
-                  ) {
-                    fieldErrors.push(
-                      `  ✗ ${childField}: Should be 'postgres.user' instead of 'postgres.username'`,
-                    );
-                  } else {
-                    fieldErrors.push(`  ✗ ${childField}: Unknown property`);
-                  }
+                  fieldErrors.push(
+                    `  ✗ ${childField}: Should be 'postgres.user' instead of 'postgres.username'`,
+                  );
                 } else {
-                  // Show the actual value if it's helpful
-                  const valueHint =
-                    childValue !== undefined && typeof childValue !== 'object'
-                      ? ` (got: ${JSON.stringify(childValue)})`
-                      : '';
-                  fieldErrors.push(`  ✗ ${childField}: ${msg}${valueHint}`);
+                  fieldErrors.push(`  ✗ ${childField}: Unknown property`);
                 }
-              },
-            );
+              } else {
+                // Show the actual value if it's helpful
+                const valueHint =
+                  childValue !== undefined && typeof childValue !== 'object'
+                    ? ` (got: ${JSON.stringify(childValue)})`
+                    : '';
+                fieldErrors.push(`  ✗ ${childField}: ${msg}${valueHint}`);
+              }
+            });
           }
         });
       }
@@ -494,7 +574,7 @@ export class DBDockConfigService {
     } = config.storage;
 
     if (
-      (provider === 's3' || provider === 'r2') &&
+      (provider === StorageProvider.S3 || provider === StorageProvider.R2) &&
       (!accessKeyId || !secretAccessKey)
     ) {
       this.handleError(
@@ -502,7 +582,7 @@ export class DBDockConfigService {
       );
     }
 
-    if (provider === 'cloudinary') {
+    if (provider === StorageProvider.CLOUDINARY) {
       if (!cloudinaryApiKey || !cloudinaryApiSecret) {
         this.handleError(
           `❌ DBDock Configuration Error:\n\n  • storage.cloudinaryApiKey and storage.cloudinaryApiSecret are required for cloudinary provider\n\nSet via DBDOCK_CLOUDINARY_API_KEY and DBDOCK_CLOUDINARY_API_SECRET environment variables.`,
@@ -515,13 +595,16 @@ export class DBDockConfigService {
       }
     }
 
-    if ((provider === 's3' || provider === 'r2') && !endpoint) {
+    if (
+      (provider === StorageProvider.S3 || provider === StorageProvider.R2) &&
+      !endpoint
+    ) {
       this.handleError(
         `❌ DBDock Configuration Error:\n\n  • storage.endpoint is required for ${provider} provider\n\nPlease check your dbdock.config.json or environment variables.`,
       );
     }
 
-    if (provider === 'local' && !localPath) {
+    if (provider === StorageProvider.LOCAL && !localPath) {
       this.handleError(
         `❌ DBDock Configuration Error:\n\n  • storage.localPath is required for local provider\n\nPlease check your dbdock.config.json or environment variables.`,
       );

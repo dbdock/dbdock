@@ -54,7 +54,7 @@ export async function analyzePostgres(
 }
 
 async function getTableNames(pool: Pool): Promise<string[]> {
-  const result = await pool.query(`
+  const result = await pool.query<{ table_name: string }>(`
     SELECT table_name
     FROM information_schema.tables
     WHERE table_schema = 'public'
@@ -62,6 +62,32 @@ async function getTableNames(pool: Pool): Promise<string[]> {
     ORDER BY table_name
   `);
   return result.rows.map((r) => r.table_name);
+}
+
+interface PgColumnRow {
+  column_name: string;
+  data_type: string;
+  udt_name: string;
+  is_nullable: string;
+  column_default: string | null;
+  character_maximum_length: number | null;
+  numeric_precision: number | null;
+  is_primary_key: boolean;
+  is_unique: boolean;
+}
+
+interface PgForeignKeyRow {
+  constraint_name: string;
+  column_name: string;
+  referenced_table: string;
+  referenced_column: string;
+}
+
+interface PgIndexRow {
+  index_name: string;
+  columns: string[];
+  is_unique: boolean;
+  is_primary: boolean;
 }
 
 async function analyzeTable(
@@ -89,7 +115,7 @@ async function getColumns(
   pool: Pool,
   tableName: string,
 ): Promise<PgColumnInfo[]> {
-  const result = await pool.query(
+  const result = await pool.query<PgColumnRow>(
     `
     SELECT
       c.column_name,
@@ -146,7 +172,7 @@ async function getForeignKeys(
   pool: Pool,
   tableName: string,
 ): Promise<PgForeignKey[]> {
-  const result = await pool.query(
+  const result = await pool.query<PgForeignKeyRow>(
     `
     SELECT
       tc.constraint_name,
@@ -179,7 +205,7 @@ async function getIndexes(
   pool: Pool,
   tableName: string,
 ): Promise<PgIndexInfo[]> {
-  const result = await pool.query(
+  const result = await pool.query<PgIndexRow>(
     `
     SELECT
       i.relname AS index_name,
@@ -208,17 +234,17 @@ async function getIndexes(
 }
 
 async function getRowCount(pool: Pool, tableName: string): Promise<number> {
-  const result = await pool.query(
+  const result = await pool.query<{ estimate: string }>(
     `SELECT reltuples::bigint AS estimate FROM pg_class WHERE relname = $1`,
     [tableName],
   );
   const estimate = parseInt(result.rows[0]?.estimate || '0');
 
   if (estimate < 10000) {
-    const exact = await pool.query(
+    const exact = await pool.query<{ count: number }>(
       `SELECT count(*)::integer AS count FROM "${tableName}"`,
     );
-    return parseInt(exact.rows[0]?.count || '0');
+    return Number(exact.rows[0]?.count ?? 0);
   }
 
   return Math.max(estimate, 0);

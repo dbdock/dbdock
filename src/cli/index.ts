@@ -19,7 +19,7 @@ import { join } from 'path';
 
 const packageJson = JSON.parse(
   readFileSync(join(__dirname, '../../package.json'), 'utf-8'),
-);
+) as { version: string };
 const version = packageJson.version;
 
 process.on('SIGINT', () => {

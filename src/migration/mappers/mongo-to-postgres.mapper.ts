@@ -160,7 +160,6 @@ function processField(
   if (nonNullTypes.length > 1) {
     const sorted = nonNullTypes.sort((a, b) => b[1] - a[1]);
     const majorType = sorted[0][0];
-    const total = sorted.reduce((sum, [, c]) => sum + c, 0);
 
     conflicts.push({
       type: 'type_mismatch',
@@ -236,7 +235,7 @@ function handleNestedObject(
   nestedMappings: NestedMapping[],
   conflicts: MigrationConflict[],
   maxDepth: number,
-  docCount: number,
+  _docCount: number,
 ): void {
   const nestedFields = field.nestedFields || [];
   const isConsistent =
@@ -304,9 +303,9 @@ function handleArray(
   parentTable: string,
   collectionName: string,
   arrayMappings: ArrayMapping[],
-  conflicts: MigrationConflict[],
-  maxDepth: number,
-  docCount: number,
+  _conflicts: MigrationConflict[],
+  _maxDepth: number,
+  _docCount: number,
 ): void {
   const elementTypes = field.arrayElementType?.split(' | ') || [];
   const hasObjects = elementTypes.includes('object');

@@ -1,10 +1,14 @@
-import { loadConfig } from '../utils/config';
+import { loadConfig, ScheduleEntry } from '../utils/config';
 import { logger } from '../utils/logger';
 import { Logger } from '@nestjs/common';
 
 Logger.overrideLogger(false);
 
-export async function statusCommand(): Promise<void> {
+export function statusCommand(): Promise<void> {
+  return Promise.resolve(runStatusCommand());
+}
+
+function runStatusCommand(): void {
   try {
     const config = loadConfig();
     const schedules = config.backup?.schedules || [];
@@ -18,11 +22,11 @@ export async function statusCommand(): Promise<void> {
     logger.info('\n📅 Scheduled Backups:\n');
 
     const maxNameLength = Math.max(
-      ...schedules.map((s: any) => (s.name || 'Unnamed').length),
+      ...schedules.map((s: ScheduleEntry) => (s.name || 'Unnamed').length),
       10,
     );
     const maxCronLength = Math.max(
-      ...schedules.map((s: any) => s.cron.length),
+      ...schedules.map((s: ScheduleEntry) => s.cron.length),
       15,
     );
 
@@ -36,7 +40,7 @@ export async function statusCommand(): Promise<void> {
     );
     logger.log(separator);
 
-    schedules.forEach((schedule: any, index: number) => {
+    schedules.forEach((schedule: ScheduleEntry, index: number) => {
       const name = (schedule.name || 'Unnamed').padEnd(maxNameLength);
       const cron = schedule.cron.padEnd(maxCronLength);
       const status = (
@@ -51,7 +55,7 @@ export async function statusCommand(): Promise<void> {
     logger.log('');
 
     const enabledCount = schedules.filter(
-      (s: any) => s.enabled !== false,
+      (s: ScheduleEntry) => s.enabled !== false,
     ).length;
     const disabledCount = schedules.length - enabledCount;
 

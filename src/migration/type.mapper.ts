@@ -68,7 +68,13 @@ export function pgTypeToMongoType(pgType: string): string {
   return 'string';
 }
 
-export function detectMongoFieldType(value: any): string {
+interface BsonLike {
+  _bsontype?: string;
+  toString?: () => string;
+  constructor?: { name?: string };
+}
+
+export function detectMongoFieldType(value: unknown): string {
   if (value === null) return 'null';
   if (value === undefined) return 'undefined';
 
@@ -86,20 +92,17 @@ export function detectMongoFieldType(value: any): string {
   if (Array.isArray(value)) return 'array';
 
   if (typeof value === 'object') {
-    if (value._bsontype === 'ObjectId' || value._bsontype === 'ObjectID')
+    const v = value as BsonLike;
+    if (v._bsontype === 'ObjectId' || v._bsontype === 'ObjectID')
       return 'objectId';
-    if (value._bsontype === 'Decimal128') return 'decimal';
-    if (value._bsontype === 'Long') return 'long';
-    if (value._bsontype === 'Binary') return 'binData';
-    if (value._bsontype === 'Timestamp') return 'timestamp';
-    if (value._bsontype === 'BSONRegExp') return 'regex';
+    if (v._bsontype === 'Decimal128') return 'decimal';
+    if (v._bsontype === 'Long') return 'long';
+    if (v._bsontype === 'Binary') return 'binData';
+    if (v._bsontype === 'Timestamp') return 'timestamp';
+    if (v._bsontype === 'BSONRegExp') return 'regex';
 
-    const oid = value.toString?.();
-    if (
-      oid &&
-      /^[a-f0-9]{24}$/.test(oid) &&
-      value.constructor?.name === 'ObjectId'
-    )
+    const oid = v.toString?.();
+    if (oid && /^[a-f0-9]{24}$/.test(oid) && v.constructor?.name === 'ObjectId')
       return 'objectId';
 
     return 'object';
@@ -120,10 +123,10 @@ export function resolveMajorityType(
 }
 
 export function coerceValue(
-  value: any,
+  value: unknown,
   fromType: string,
   toType: string,
-): { success: boolean; value: any } {
+): { success: boolean; value: unknown } {
   try {
     if (value === null || value === undefined)
       return { success: true, value: null };
@@ -143,7 +146,16 @@ export function coerceValue(
       return { success: true, value: num };
     }
 
-    if (toType === 'text') return { success: true, value: String(value) };
+    if (toType === 'text')
+      return {
+        success: true,
+        value:
+          value instanceof Date
+            ? value.toISOString()
+            : typeof value === 'object' && value !== null
+              ? JSON.stringify(value)
+              : String(value as string | number | boolean),
+      };
 
     if (toType === 'boolean') {
       if (typeof value === 'string') {
@@ -157,7 +169,7 @@ export function coerceValue(
     }
 
     if (toType === 'timestamptz') {
-      const d = new Date(value);
+      const d = new Date(value as string | number | Date);
       if (isNaN(d.getTime())) return { success: false, value };
       return { success: true, value: d };
     }
@@ -166,13 +178,17 @@ export function coerceValue(
       if (typeof value === 'string' && /^[a-f0-9]{24}$/.test(value)) {
         return { success: true, value: objectIdToUuid(value) };
       }
-      if (typeof value === 'object' && value.toString) {
-        const str = value.toString();
+      if (value && typeof value === 'object') {
+        const maybe = value as { toString?: () => string };
+        const str = maybe.toString ? maybe.toString() : '';
         if (/^[a-f0-9]{24}$/.test(str)) {
           return { success: true, value: objectIdToUuid(str) };
         }
       }
-      return { success: true, value: String(value) };
+      return {
+        success: true,
+        value: String(value as string | number | boolean),
+      };
     }
 
     return { success: true, value };
@@ -192,7 +208,7 @@ export function singularize(word: string): string {
 export function toSnakeCase(str: string): string {
   return str
     .replace(/([a-z])([A-Z])/g, '$1_$2')
-    .replace(/[\s\-\.]+/g, '_')
+    .replace(/[\s\-.]+/g, '_')
     .toLowerCase();
 }
 
