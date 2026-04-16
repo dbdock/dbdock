@@ -1,6 +1,6 @@
 {
   "name": "dbdock",
-  "version": "1.1.22",
+  "version": "1.1.26",
   "description": "Enterprise-grade database backup, restore, and cross-database migration (MongoDB ↔ PostgreSQL). CLI-first tool with encryption, compression, and multi-cloud storage.",
   "author": "Naheem Olaide <naheemolaide@gmail.com>",
   "private": false,
@@ -43,10 +43,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/naheemolaide/dbdock-support.git"
+    "url": "git+https://github.com/dbdock/dbdock.git"
   },
   "bugs": {
-    "url": "https://github.com/naheemolaide/dbdock-support/issues"
+    "url": "https://github.com/dbdock/dbdock/issues"
   },
   "homepage": "https://dbdock.mintlify.app",
   "engines": {

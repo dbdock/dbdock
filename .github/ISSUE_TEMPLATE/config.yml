@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://dbdock.mintlify.app
+    about: Check the docs before opening an issue
+  - name: Discussions
+    url: https://github.com/dbdock/dbdock/discussions
+    about: Ask questions, share ideas, get help from the community
+  - name: Security vulnerability
+    url: https://github.com/dbdock/dbdock/security/advisories/new
+    about: Report security issues privately (do NOT open a public issue)

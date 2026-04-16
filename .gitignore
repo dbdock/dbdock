@@ -60,3 +60,9 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 dbdock.config.json
 *.backup
 *.dump
+
+# AI assistants / local tooling
+.claude/
+.cursor/
+.aider*
+.vscode/

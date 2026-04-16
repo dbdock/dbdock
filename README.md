@@ -7,7 +7,7 @@ Stop writing backup scripts. Stop losing sleep over database migrations. DBDock 
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org)
 [![Documentation](https://img.shields.io/badge/docs-dbdock.mintlify.app-blue)](https://dbdock.mintlify.app)
 
-[Full Docs](https://dbdock.mintlify.app) ・ [Discussions](https://github.com/naheemolaide/dbdock-support/discussions) ・ [Report a Bug](https://github.com/naheemolaide/dbdock-support/issues)
+[Full Docs](https://dbdock.mintlify.app) ・ [Discussions](https://github.com/dbdock/dbdock/discussions) ・ [Report a Bug](https://github.com/dbdock/dbdock/issues)
 
 ---
 
@@ -796,9 +796,9 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 - [npm Package](https://www.npmjs.com/package/dbdock)
 - [Full Documentation](https://dbdock.mintlify.app)
-- [GitHub](https://github.com/naheemolaide/dbdock-support)
-- [Discussions](https://github.com/naheemolaide/dbdock-support/discussions)
-- [Report Issues](https://github.com/naheemolaide/dbdock-support/issues)
+- [GitHub](https://github.com/dbdock/dbdock)
+- [Discussions](https://github.com/dbdock/dbdock/discussions)
+- [Report Issues](https://github.com/dbdock/dbdock/issues)
 
 ## License
 
