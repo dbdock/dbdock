@@ -800,6 +800,20 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 - [Discussions](https://github.com/dbdock/dbdock/discussions)
 - [Report Issues](https://github.com/dbdock/dbdock/issues)
 
+## Contributing
+
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines. For security issues, see [SECURITY.md](SECURITY.md).
+
+### Contributors
+
+Thanks to everyone who has contributed to DBDock:
+
+<a href="https://github.com/dbdock/dbdock/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=dbdock/dbdock" alt="DBDock contributors" />
+</a>
+
+Created and maintained by [Naheem Olaide](https://github.com/appdever01).
+
 ## License
 
 MIT
