@@ -31,11 +31,17 @@ export async function backupCommand(options: BackupOptions): Promise<void> {
       backup: {
         ...config.backup,
         encryption: {
-          enabled: options.encrypt !== undefined ? options.encrypt : (config.backup?.encryption?.enabled || false),
+          enabled:
+            options.encrypt !== undefined
+              ? options.encrypt
+              : config.backup?.encryption?.enabled || false,
           key: options.encryptionKey || config.backup?.encryption?.key,
         },
         compression: {
-          enabled: options.compress !== undefined ? options.compress : (config.backup?.compression?.enabled || false),
+          enabled:
+            options.compress !== undefined
+              ? options.compress
+              : config.backup?.compression?.enabled || false,
           level: options.compressionLevel || config.backup?.compression?.level,
         },
       },
@@ -68,7 +74,8 @@ export async function backupCommand(options: BackupOptions): Promise<void> {
       },
       onStage: (stage) => {
         currentStage = stage;
-        const mb = totalBytes > 0 ? (totalBytes / 1024 / 1024).toFixed(2) : '0.00';
+        const mb =
+          totalBytes > 0 ? (totalBytes / 1024 / 1024).toFixed(2) : '0.00';
         spinner.text = `${stage} (${mb} MB)`;
       },
     });
@@ -76,21 +83,26 @@ export async function backupCommand(options: BackupOptions): Promise<void> {
     spinner.succeed('Backup complete');
     console.log('');
     logger.success('Backup completed successfully');
-    
+
     // Send success alert
-    await alertService.sendBackupSuccessAlert({
-      id: result.backupId,
-      database: mergedConfig.database.database || 'unknown',
-      size: result.size,
-      compressedSize: result.size,
-      duration: result.duration,
-      endTime: new Date(),
-      startTime: new Date(Date.now() - result.duration),
-      storageKey: result.storageKey,
-      type: BackupType.FULL,
-      status: BackupStatus.COMPLETED,
-      compression: { enabled: mergedConfig.backup?.compression?.enabled || false },
-    }, result.downloadUrl);
+    await alertService.sendBackupSuccessAlert(
+      {
+        id: result.backupId,
+        database: mergedConfig.database.database || 'unknown',
+        size: result.size,
+        compressedSize: result.size,
+        duration: result.duration,
+        endTime: new Date(),
+        startTime: new Date(Date.now() - result.duration),
+        storageKey: result.storageKey,
+        type: BackupType.FULL,
+        status: BackupStatus.COMPLETED,
+        compression: {
+          enabled: mergedConfig.backup?.compression?.enabled || false,
+        },
+      },
+      result.downloadUrl,
+    );
 
     logger.success(`Backup ID: ${result.backupId}`);
 
@@ -100,7 +112,6 @@ export async function backupCommand(options: BackupOptions): Promise<void> {
       logger.info(result.downloadUrl);
       console.log('');
     }
-
   } catch (error) {
     spinner.fail('Backup failed');
     logger.error(error instanceof Error ? error.message : String(error));
@@ -117,20 +128,23 @@ export async function backupCommand(options: BackupOptions): Promise<void> {
         },
       } as any;
       const alertService = new AlertService(mockConfigService);
-      
-      await alertService.sendBackupFailureAlert({
-        id: 'failed-backup',
-        database: config.database?.database || 'unknown',
-        size: 0,
-        compressedSize: 0,
-        duration: 0,
-        endTime: new Date(),
-        startTime: new Date(),
-        storageKey: '',
-        type: BackupType.FULL,
-        status: BackupStatus.FAILED,
-        compression: { enabled: false },
-      }, error instanceof Error ? error : new Error(String(error)));
+
+      await alertService.sendBackupFailureAlert(
+        {
+          id: 'failed-backup',
+          database: config.database?.database || 'unknown',
+          size: 0,
+          compressedSize: 0,
+          duration: 0,
+          endTime: new Date(),
+          startTime: new Date(),
+          storageKey: '',
+          type: BackupType.FULL,
+          status: BackupStatus.FAILED,
+          compression: { enabled: false },
+        },
+        error instanceof Error ? error : new Error(String(error)),
+      );
     } catch (alertError) {
       // Ignore alert failures during backup failure
     }

@@ -128,11 +128,9 @@ async function migrateTable(
       try {
         if (plan.options.incremental) {
           for (const doc of documents) {
-            await collection.replaceOne(
-              { _id: doc._id },
-              doc,
-              { upsert: true },
-            );
+            await collection.replaceOne({ _id: doc._id }, doc, {
+              upsert: true,
+            });
           }
         } else {
           await collection.insertMany(documents, { ordered: false });
@@ -160,11 +158,7 @@ async function migrateTable(
     targetCount,
     failedCount,
     status:
-      failedCount === 0
-        ? 'success'
-        : targetCount > 0
-          ? 'partial'
-          : 'failed',
+      failedCount === 0 ? 'success' : targetCount > 0 ? 'partial' : 'failed',
   };
 }
 
@@ -215,7 +209,9 @@ async function buildDocument(
 
     doc[mongoField] = relatedRows.rows.map((r) => {
       const pk = Object.keys(r)[0];
-      return convertPgValueToMongo(r[Object.keys(r).find((k) => k !== pk) || pk]);
+      return convertPgValueToMongo(
+        r[Object.keys(r).find((k) => k !== pk) || pk],
+      );
     });
   }
 

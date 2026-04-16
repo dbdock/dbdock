@@ -25,7 +25,10 @@ export async function createDBDock(
   if (timeout > 0) {
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(
-        () => reject(new Error(`DBDock initialization timed out after ${timeout}ms`)),
+        () =>
+          reject(
+            new Error(`DBDock initialization timed out after ${timeout}ms`),
+          ),
         timeout,
       );
     });

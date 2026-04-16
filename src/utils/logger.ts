@@ -1,15 +1,39 @@
 import { Logger as NestLogger } from '@nestjs/common';
 
 const SENSITIVE_PATTERNS: Array<{ pattern: RegExp; replacement: string }> = [
-  { pattern: /password['":\s]*['"]?([^'"}\s,]+)/gi, replacement: 'password: ********' },
-  { pattern: /secret['":\s]*['"]?([^'"}\s,]+)/gi, replacement: 'secret: ********' },
-  { pattern: /accesskey['":\s]*['"]?([^'"}\s,]+)/gi, replacement: 'accessKey: ********' },
-  { pattern: /secretkey['":\s]*['"]?([^'"}\s,]+)/gi, replacement: 'secretKey: ********' },
-  { pattern: /apikey['":\s]*['"]?([^'"}\s,]+)/gi, replacement: 'apiKey: ********' },
-  { pattern: /apisecret['":\s]*['"]?([^'"}\s,]+)/gi, replacement: 'apiSecret: ********' },
-  { pattern: /webhook['":\s]*['"]?(https?:\/\/[^'"}\s,]+)/gi, replacement: 'webhook: ********' },
+  {
+    pattern: /password['":\s]*['"]?([^'"}\s,]+)/gi,
+    replacement: 'password: ********',
+  },
+  {
+    pattern: /secret['":\s]*['"]?([^'"}\s,]+)/gi,
+    replacement: 'secret: ********',
+  },
+  {
+    pattern: /accesskey['":\s]*['"]?([^'"}\s,]+)/gi,
+    replacement: 'accessKey: ********',
+  },
+  {
+    pattern: /secretkey['":\s]*['"]?([^'"}\s,]+)/gi,
+    replacement: 'secretKey: ********',
+  },
+  {
+    pattern: /apikey['":\s]*['"]?([^'"}\s,]+)/gi,
+    replacement: 'apiKey: ********',
+  },
+  {
+    pattern: /apisecret['":\s]*['"]?([^'"}\s,]+)/gi,
+    replacement: 'apiSecret: ********',
+  },
+  {
+    pattern: /webhook['":\s]*['"]?(https?:\/\/[^'"}\s,]+)/gi,
+    replacement: 'webhook: ********',
+  },
   { pattern: /PGPASSWORD=([^\s]+)/gi, replacement: 'PGPASSWORD=********' },
-  { pattern: /Bearer\s+([A-Za-z0-9\-._~+/]+=*)/gi, replacement: 'Bearer ********' },
+  {
+    pattern: /Bearer\s+([A-Za-z0-9\-._~+/]+=*)/gi,
+    replacement: 'Bearer ********',
+  },
   { pattern: /Basic\s+([A-Za-z0-9+/]+=*)/gi, replacement: 'Basic ********' },
 ];
 

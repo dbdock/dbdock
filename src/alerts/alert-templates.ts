@@ -82,17 +82,24 @@ export const DEFAULT_TEMPLATES: Record<AlertType, AlertTemplate> = {
   },
 };
 
-export function renderTemplate(template: string, context: Record<string, any>): string {
+export function renderTemplate(
+  template: string,
+  context: Record<string, any>,
+): string {
   let rendered = template;
 
   for (const [key, value] of Object.entries(context)) {
-    const stringValue = value !== undefined && value !== null ? String(value) : '';
+    const stringValue =
+      value !== undefined && value !== null ? String(value) : '';
     rendered = rendered.replace(new RegExp(`{{${key}}}`, 'g'), stringValue);
   }
 
-  rendered = rendered.replace(/{{#if\s+(\w+)}}([\s\S]*?){{\/if}}/g, (match, key, content) => {
-    return context[key] ? content : '';
-  });
+  rendered = rendered.replace(
+    /{{#if\s+(\w+)}}([\s\S]*?){{\/if}}/g,
+    (match, key, content) => {
+      return context[key] ? content : '';
+    },
+  );
 
   return rendered;
 }

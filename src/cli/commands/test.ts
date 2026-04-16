@@ -53,11 +53,19 @@ async function testDatabaseConnection(config: any): Promise<void> {
   }
 
   const psqlArgs = [
-    '-h', dbConfig.host || 'localhost',
-    '-p', String(dbConfig.port || 5432),
-    '-U', dbConfig.user || dbConfig.username || process.env.DBDOCK_DB_USER || 'postgres',
-    '-d', dbConfig.database || 'postgres',
-    '-c', 'SELECT 1',
+    '-h',
+    dbConfig.host || 'localhost',
+    '-p',
+    String(dbConfig.port || 5432),
+    '-U',
+    dbConfig.user ||
+      dbConfig.username ||
+      process.env.DBDOCK_DB_USER ||
+      'postgres',
+    '-d',
+    dbConfig.database || 'postgres',
+    '-c',
+    'SELECT 1',
     '--no-password',
   ];
 
@@ -84,7 +92,9 @@ async function testDatabaseConnection(config: any): Promise<void> {
         if (code === 0) {
           resolve();
         } else {
-          reject(new Error(`Database connection failed with exit code ${code}`));
+          reject(
+            new Error(`Database connection failed with exit code ${code}`),
+          );
         }
       }
     });
@@ -99,15 +109,18 @@ async function testStorageConfiguration(config: any): Promise<void> {
   const storageConfig = config.storage;
 
   if (storageConfig.provider === 'local') {
-    const path = storageConfig.local?.path || storageConfig.localPath || './backups';
+    const path =
+      storageConfig.local?.path || storageConfig.localPath || './backups';
     if (!existsSync(path)) {
       throw new Error(`Local storage path does not exist: ${path}`);
     }
   } else if (storageConfig.provider === 's3') {
     const bucket = storageConfig.s3?.bucket || storageConfig.bucket;
     const endpoint = storageConfig.s3?.endpoint || storageConfig.endpoint;
-    const accessKeyId = storageConfig.s3?.accessKeyId || storageConfig.accessKeyId;
-    const secretAccessKey = storageConfig.s3?.secretAccessKey || storageConfig.secretAccessKey;
+    const accessKeyId =
+      storageConfig.s3?.accessKeyId || storageConfig.accessKeyId;
+    const secretAccessKey =
+      storageConfig.s3?.secretAccessKey || storageConfig.secretAccessKey;
 
     if (!bucket) {
       throw new Error('S3 bucket name is required');
@@ -128,14 +141,17 @@ async function testStorageConfiguration(config: any): Promise<void> {
       });
       await adapter.listObjects({ maxKeys: 1 });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       throw new Error(`S3 connection test failed: ${errorMessage}`);
     }
   } else if (storageConfig.provider === 'r2') {
     const bucket = storageConfig.s3?.bucket || storageConfig.bucket;
     const endpoint = storageConfig.s3?.endpoint || storageConfig.endpoint;
-    const accessKeyId = storageConfig.s3?.accessKeyId || storageConfig.accessKeyId;
-    const secretAccessKey = storageConfig.s3?.secretAccessKey || storageConfig.secretAccessKey;
+    const accessKeyId =
+      storageConfig.s3?.accessKeyId || storageConfig.accessKeyId;
+    const secretAccessKey =
+      storageConfig.s3?.secretAccessKey || storageConfig.secretAccessKey;
 
     if (!bucket) {
       throw new Error('R2 bucket name is required');
@@ -156,7 +172,9 @@ async function testStorageConfiguration(config: any): Promise<void> {
       if (endpointStr.includes('://')) {
         const match = endpointStr.match(/https?:\/\/([^.]+)/);
         if (!match || !match[1]) {
-          throw new Error('Invalid R2 endpoint format. Expected account ID or URL like https://accountId.r2.cloudflarestorage.com');
+          throw new Error(
+            'Invalid R2 endpoint format. Expected account ID or URL like https://accountId.r2.cloudflarestorage.com',
+          );
         }
         accountId = match[1];
       } else if (endpointStr.includes('.')) {
@@ -173,13 +191,17 @@ async function testStorageConfiguration(config: any): Promise<void> {
       });
       await adapter.listObjects({ maxKeys: 1 });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       throw new Error(`R2 connection test failed: ${errorMessage}`);
     }
   } else if (storageConfig.provider === 'cloudinary') {
-    const cloudName = storageConfig.cloudinary?.cloudName || storageConfig.bucket;
-    const apiKey = storageConfig.cloudinary?.apiKey || storageConfig.accessKeyId;
-    const apiSecret = storageConfig.cloudinary?.apiSecret || storageConfig.secretAccessKey;
+    const cloudName =
+      storageConfig.cloudinary?.cloudName || storageConfig.bucket;
+    const apiKey =
+      storageConfig.cloudinary?.apiKey || storageConfig.accessKeyId;
+    const apiSecret =
+      storageConfig.cloudinary?.apiSecret || storageConfig.secretAccessKey;
 
     if (!cloudName) {
       throw new Error('Cloudinary cloud name is required');
@@ -200,7 +222,8 @@ async function testStorageConfiguration(config: any): Promise<void> {
       });
       await adapter.listObjects({ maxKeys: 1 });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       throw new Error(`Cloudinary connection test failed: ${errorMessage}`);
     }
   }
@@ -264,11 +287,17 @@ async function testEmailConfiguration(config: any): Promise<void> {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     if (errorMessage.includes('Invalid login')) {
-      throw new Error('SMTP authentication failed. Please check your username and password');
+      throw new Error(
+        'SMTP authentication failed. Please check your username and password',
+      );
     } else if (errorMessage.includes('ECONNREFUSED')) {
-      throw new Error(`Cannot connect to SMTP server at ${emailConfig.smtp.host}:${emailConfig.smtp.port}`);
+      throw new Error(
+        `Cannot connect to SMTP server at ${emailConfig.smtp.host}:${emailConfig.smtp.port}`,
+      );
     } else if (errorMessage.includes('ETIMEDOUT')) {
-      throw new Error(`Connection timeout to SMTP server at ${emailConfig.smtp.host}:${emailConfig.smtp.port}`);
+      throw new Error(
+        `Connection timeout to SMTP server at ${emailConfig.smtp.host}:${emailConfig.smtp.port}`,
+      );
     } else {
       throw new Error(`SMTP connection failed: ${errorMessage}`);
     }

@@ -32,7 +32,9 @@ export class CloudinaryStorageAdapter implements IStorageAdapter {
       api_secret: config.apiSecret,
     });
 
-    this.logger.log(`Cloudinary adapter initialized for folder: ${this.folder}`);
+    this.logger.log(
+      `Cloudinary adapter initialized for folder: ${this.folder}`,
+    );
   }
 
   async uploadStream(
@@ -52,7 +54,9 @@ export class CloudinaryStorageAdapter implements IStorageAdapter {
         (error, result: UploadApiResponse | undefined) => {
           if (error) {
             const friendlyMessage = this.getFriendlyError(error);
-            this.logger.error(`Failed to upload ${options.key}: ${friendlyMessage}`);
+            this.logger.error(
+              `Failed to upload ${options.key}: ${friendlyMessage}`,
+            );
             const cleanError = new Error(friendlyMessage);
             cleanError.name = 'StorageConfigurationError';
             reject(cleanError);
@@ -84,17 +88,23 @@ export class CloudinaryStorageAdapter implements IStorageAdapter {
       const response = await fetch(url);
 
       if (!response.ok) {
-        throw new Error(`Failed to download: ${response.statusText} (${response.status})`);
+        throw new Error(
+          `Failed to download: ${response.statusText} (${response.status})`,
+        );
       }
 
       if (!response.body) {
         throw new Error('No response body received from Cloudinary');
       }
 
-      return NodeReadable.fromWeb(response.body as import('stream/web').ReadableStream);
+      return NodeReadable.fromWeb(
+        response.body as import('stream/web').ReadableStream,
+      );
     } catch (error) {
       const friendlyMessage = this.getFriendlyError(error);
-      this.logger.error(`Failed to download ${options.key}: ${friendlyMessage}`);
+      this.logger.error(
+        `Failed to download ${options.key}: ${friendlyMessage}`,
+      );
       const cleanError = new Error(friendlyMessage);
       cleanError.name = 'StorageConfigurationError';
       throw cleanError;
@@ -103,7 +113,9 @@ export class CloudinaryStorageAdapter implements IStorageAdapter {
 
   async listObjects(options?: ListOptions): Promise<StorageObject[]> {
     try {
-      const searchPrefix = options?.prefix ? `${this.folder}/${options.prefix}` : this.folder;
+      const searchPrefix = options?.prefix
+        ? `${this.folder}/${options.prefix}`
+        : this.folder;
 
       const result = await cloudinary.api.resources({
         type: 'upload',
@@ -174,7 +186,7 @@ export class CloudinaryStorageAdapter implements IStorageAdapter {
       });
       return true;
     } catch (error) {
-      if ((error as any).error?.http_code === 404) {
+      if (error.error?.http_code === 404) {
         return false;
       }
       throw error;
@@ -186,7 +198,11 @@ export class CloudinaryStorageAdapter implements IStorageAdapter {
     const message = err?.message || '';
     const httpCode = err?.error?.http_code;
 
-    if (httpCode === 401 || message.includes('Invalid API key') || message.includes('authentication')) {
+    if (
+      httpCode === 401 ||
+      message.includes('Invalid API key') ||
+      message.includes('authentication')
+    ) {
       return 'Invalid storage configuration: Authentication failed. Please verify your Cloudinary API key and secret are correct.';
     }
 

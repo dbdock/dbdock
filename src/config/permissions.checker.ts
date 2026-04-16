@@ -39,9 +39,11 @@ export function checkFilePermissions(filePath: string): PermissionsCheckResult {
 
     let warning: string | undefined;
     if (isWorldReadable) {
-      warning = 'Config file is world-readable. Anyone on this system can read your secrets.';
+      warning =
+        'Config file is world-readable. Anyone on this system can read your secrets.';
     } else if (hasWriteByOthers) {
-      warning = 'Config file is writable by group or others. This could allow unauthorized modifications.';
+      warning =
+        'Config file is writable by group or others. This could allow unauthorized modifications.';
     } else if (isGroupReadable) {
       warning = 'Config file is readable by group members.';
     }
@@ -79,7 +81,9 @@ export function suggestPermissionsFix(filePath: string): string {
   return `chmod 600 "${absolutePath}"`;
 }
 
-export function checkDirectoryPermissions(dirPath: string): PermissionsCheckResult {
+export function checkDirectoryPermissions(
+  dirPath: string,
+): PermissionsCheckResult {
   if (os.platform() === 'win32') {
     return {
       secure: true,

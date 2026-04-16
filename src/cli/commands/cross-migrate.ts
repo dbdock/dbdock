@@ -56,19 +56,19 @@ export async function crossMigrateCommand(
     logger.error(
       `Source and target are both ${sourceParsed.type}. Cross-database migration requires different database types.`,
     );
-    logger.info('For same-database copies, use: dbdock copydb <source> <target>');
+    logger.info(
+      'For same-database copies, use: dbdock copydb <source> <target>',
+    );
     process.exit(1);
   }
 
-  const sourceLabel = sourceParsed.type === 'mongodb' ? 'MongoDB' : 'PostgreSQL';
-  const targetLabel = targetParsed.type === 'mongodb' ? 'MongoDB' : 'PostgreSQL';
+  const sourceLabel =
+    sourceParsed.type === 'mongodb' ? 'MongoDB' : 'PostgreSQL';
+  const targetLabel =
+    targetParsed.type === 'mongodb' ? 'MongoDB' : 'PostgreSQL';
 
-  logger.info(
-    `Source: ${chalk.cyan(sourceLabel)} — ${sourceParsed.database}`,
-  );
-  logger.info(
-    `Target: ${chalk.cyan(targetLabel)} — ${targetParsed.database}`,
-  );
+  logger.info(`Source: ${chalk.cyan(sourceLabel)} — ${sourceParsed.database}`);
+  logger.info(`Target: ${chalk.cyan(targetLabel)} — ${targetParsed.database}`);
 
   if (options.dryRun) {
     logger.info(`Mode: ${chalk.yellow('Dry Run')} (no changes to target)`);
@@ -164,7 +164,9 @@ export async function crossMigrateCommand(
     try {
       exportConfig(plan, path);
       logger.success(`Config exported to ${path}`);
-      logger.info(`Re-run with: dbdock migrate --config ${path} "${maskUrl(sourceUrl)}" "${maskUrl(targetUrl)}"`);
+      logger.info(
+        `Re-run with: dbdock migrate --config ${path} "${maskUrl(sourceUrl)}" "${maskUrl(targetUrl)}"`,
+      );
     } catch (error) {
       logger.error(
         `Failed to export: ${error instanceof Error ? error.message : String(error)}`,
@@ -235,23 +237,20 @@ async function executeMigrationWithProgress(
     {};
 
   try {
-    const result = await executeMigration(
-      plan,
-      (table, processed, total) => {
-        currentProgress[table] = { processed, total };
-        const totalProcessed = Object.values(currentProgress).reduce(
-          (s, p) => s + p.processed,
-          0,
-        );
-        const totalAll = Object.values(currentProgress).reduce(
-          (s, p) => s + p.total,
-          0,
-        );
-        const pct =
-          totalAll > 0 ? ((totalProcessed / totalAll) * 100).toFixed(1) : '0';
-        migrationSpinner.text = `Migrating... ${pct}% (${table}: ${formatNumber(processed)}/${formatNumber(total)})`;
-      },
-    );
+    const result = await executeMigration(plan, (table, processed, total) => {
+      currentProgress[table] = { processed, total };
+      const totalProcessed = Object.values(currentProgress).reduce(
+        (s, p) => s + p.processed,
+        0,
+      );
+      const totalAll = Object.values(currentProgress).reduce(
+        (s, p) => s + p.total,
+        0,
+      );
+      const pct =
+        totalAll > 0 ? ((totalProcessed / totalAll) * 100).toFixed(1) : '0';
+      migrationSpinner.text = `Migrating... ${pct}% (${table}: ${formatNumber(processed)}/${formatNumber(total)})`;
+    });
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
 
@@ -260,9 +259,7 @@ async function executeMigrationWithProgress(
         `Migration completed in ${elapsed}s${plan.options.dryRun ? ' (dry run)' : ''}`,
       );
     } else {
-      migrationSpinner.warn(
-        `Migration completed with issues in ${elapsed}s`,
-      );
+      migrationSpinner.warn(`Migration completed with issues in ${elapsed}s`);
     }
 
     console.log('');
@@ -401,7 +398,18 @@ function displayDocumentMappings(mappings: DocumentMapping[]): void {
 }
 
 function displayResults(
-  result: { success: boolean; tables: Array<{ name: string; sourceCount: number; targetCount: number; failedCount: number; status: string }>; totalErrors: number; dryRun: boolean },
+  result: {
+    success: boolean;
+    tables: Array<{
+      name: string;
+      sourceCount: number;
+      targetCount: number;
+      failedCount: number;
+      status: string;
+    }>;
+    totalErrors: number;
+    dryRun: boolean;
+  },
   isDryRun: boolean,
 ): void {
   if (isDryRun) {
@@ -420,9 +428,7 @@ function displayResults(
           : chalk.red('✗');
     const counts = `${formatNumber(table.sourceCount)} → ${formatNumber(table.targetCount)}`;
     const failed =
-      table.failedCount > 0
-        ? chalk.red(` (${table.failedCount} failed)`)
-        : '';
+      table.failedCount > 0 ? chalk.red(` (${table.failedCount} failed)`) : '';
     console.log(`  ${icon} ${table.name}: ${counts}${failed}`);
   }
 

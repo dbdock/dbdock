@@ -7,7 +7,10 @@ import {
   DEFAULT_MIGRATION_OPTIONS,
 } from '../types';
 import { analyzeMongoDB, parseMongoUrl } from '../analyzers/mongodb.analyzer';
-import { analyzePostgres, parsePostgresUrl } from '../analyzers/postgres.analyzer';
+import {
+  analyzePostgres,
+  parsePostgresUrl,
+} from '../analyzers/postgres.analyzer';
 import { generateMongoToPostgresPlan } from '../mappers/mongo-to-postgres.mapper';
 import { generatePostgresToMongoPlan } from '../mappers/postgres-to-mongo.mapper';
 import { executeMongoToPostgres } from './mongo-to-postgres.engine';
@@ -53,7 +56,7 @@ export function generateMigrationPlan(
 
   throw new Error(
     `Unsupported migration direction: ${analysis.type} → ${targetParsed.type}. ` +
-    `Supported: MongoDB → PostgreSQL, PostgreSQL → MongoDB`,
+      `Supported: MongoDB → PostgreSQL, PostgreSQL → MongoDB`,
   );
 }
 

@@ -67,10 +67,7 @@ export async function migrateConfigCommand(): Promise<void> {
   writeFileSync(backupPath, configContent);
   logger.success(`✓ Original config backed up to ${CONFIG_FILE}.backup`);
 
-  writeFileSync(
-    configPath,
-    JSON.stringify(cleanedConfig, null, 2) + '\n'
-  );
+  writeFileSync(configPath, JSON.stringify(cleanedConfig, null, 2) + '\n');
   logger.success(`✓ Secrets removed from ${CONFIG_FILE}`);
 
   updateGitignore();
@@ -82,14 +79,16 @@ export async function migrateConfigCommand(): Promise<void> {
   logger.log(`  1. Review ${ENV_FILE} to ensure all secrets are correct`);
   logger.log('  2. Ensure .env is in your .gitignore');
   logger.log('  3. Run "npx dbdock test" to verify your configuration');
-  logger.log('  4. Delete the backup file when you\'re confident: rm dbdock.config.json.backup');
+  logger.log(
+    "  4. Delete the backup file when you're confident: rm dbdock.config.json.backup",
+  );
   logger.info('');
   logger.warn('⚠️  IMPORTANT: Do NOT commit .env to version control!');
 }
 
 function extractSecretsFromConfig(
   config: Record<string, unknown>,
-  secretFields: string[]
+  secretFields: string[],
 ): SecretsMap {
   const secrets: SecretsMap = {};
 
@@ -107,7 +106,7 @@ function extractSecretsFromConfig(
 
 function removeSecretsFromConfigData(
   config: Record<string, unknown>,
-  secretFields: string[]
+  secretFields: string[],
 ): Record<string, unknown> {
   const cleaned = JSON.parse(JSON.stringify(config));
 
@@ -150,7 +149,7 @@ function createEnvFile(path: string, secrets: SecretsMap): void {
 }
 
 function updateEnvFile(path: string, secrets: SecretsMap): void {
-  let content = readFileSync(path, 'utf-8');
+  const content = readFileSync(path, 'utf-8');
   const lines = content.split('\n');
 
   const existingKeys = new Set<string>();
@@ -202,7 +201,7 @@ function updateGitignore(): void {
   const lines = content.split('\n');
 
   const hasEnv = lines.some((line) =>
-    ['.env', '/.env', './.env'].includes(line.trim())
+    ['.env', '/.env', './.env'].includes(line.trim()),
   );
 
   if (!hasEnv) {

@@ -44,12 +44,19 @@ export function maskSecretValue(value: string | undefined): string {
   return value.slice(0, 2) + '****' + value.slice(-2);
 }
 
-export function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
+export function getNestedValue(
+  obj: Record<string, unknown>,
+  path: string,
+): unknown {
   const keys = path.split('.');
   let current: unknown = obj;
 
   for (const key of keys) {
-    if (current === null || current === undefined || typeof current !== 'object') {
+    if (
+      current === null ||
+      current === undefined ||
+      typeof current !== 'object'
+    ) {
       return undefined;
     }
     current = (current as Record<string, unknown>)[key];
@@ -58,7 +65,11 @@ export function getNestedValue(obj: Record<string, unknown>, path: string): unkn
   return current;
 }
 
-export function setNestedValue(obj: Record<string, unknown>, path: string, value: unknown): void {
+export function setNestedValue(
+  obj: Record<string, unknown>,
+  path: string,
+  value: unknown,
+): void {
   const keys = path.split('.');
   let current = obj;
 
@@ -101,7 +112,7 @@ export function loadSecretsFromEnv(): Record<string, string | undefined> {
 
 export function mergeSecretsIntoConfig(
   config: Record<string, unknown>,
-  secrets: Record<string, string | undefined>
+  secrets: Record<string, string | undefined>,
 ): Record<string, unknown> {
   const merged = JSON.parse(JSON.stringify(config));
 
@@ -123,7 +134,7 @@ export interface SecretsValidationResult {
 
 export function validateSecrets(
   config: Record<string, unknown>,
-  requireEnvOnly: boolean = false
+  requireEnvOnly: boolean = false,
 ): SecretsValidationResult {
   const result: SecretsValidationResult = {
     valid: true,
@@ -138,25 +149,29 @@ export function validateSecrets(
   if (requireEnvOnly && secretsInConfig.length > 0) {
     result.valid = false;
     result.warnings.push(
-      'Strict mode enabled: secrets must be provided via environment variables only.'
+      'Strict mode enabled: secrets must be provided via environment variables only.',
     );
     for (const field of secretsInConfig) {
       const envVar = ENV_VAR_MAPPING[field];
-      result.warnings.push(`  - ${field} found in config, use ${envVar} instead`);
+      result.warnings.push(
+        `  - ${field} found in config, use ${envVar} instead`,
+      );
     }
   } else if (secretsInConfig.length > 0) {
     result.warnings.push(
-      '⚠️  Security Warning: Secrets detected in configuration file.'
+      '⚠️  Security Warning: Secrets detected in configuration file.',
     );
     result.warnings.push(
-      '   Consider moving them to environment variables for better security:'
+      '   Consider moving them to environment variables for better security:',
     );
     for (const field of secretsInConfig) {
       const envVar = ENV_VAR_MAPPING[field];
       result.warnings.push(`     - ${field} → ${envVar}`);
     }
     result.warnings.push('');
-    result.warnings.push('   Run "npx dbdock migrate-config" to migrate automatically.');
+    result.warnings.push(
+      '   Run "npx dbdock migrate-config" to migrate automatically.',
+    );
   }
 
   const requiredSecrets = getRequiredSecrets(config);
@@ -190,7 +205,10 @@ function getRequiredSecrets(config: Record<string, unknown>): string[] {
     required.push('storage.cloudinaryApiSecret');
   }
 
-  const encryptionEnabled = getNestedValue(config, 'encryption.enabled') as boolean;
+  const encryptionEnabled = getNestedValue(
+    config,
+    'encryption.enabled',
+  ) as boolean;
   if (encryptionEnabled) {
     required.push('encryption.secret');
   }
@@ -213,9 +231,15 @@ export function formatMigrationInstructions(secretsInConfig: string[]): string {
     lines.push(`║  ${field.padEnd(25)} → ${envVar.padEnd(30)} ║`);
   }
 
-  lines.push('╠════════════════════════════════════════════════════════════════╣');
-  lines.push('║  Run: npx dbdock migrate-config                                ║');
-  lines.push('╚════════════════════════════════════════════════════════════════╝');
+  lines.push(
+    '╠════════════════════════════════════════════════════════════════╣',
+  );
+  lines.push(
+    '║  Run: npx dbdock migrate-config                                ║',
+  );
+  lines.push(
+    '╚════════════════════════════════════════════════════════════════╝',
+  );
   lines.push('');
 
   return lines.join('\n');

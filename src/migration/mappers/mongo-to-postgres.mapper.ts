@@ -67,7 +67,12 @@ function extractDbName(url: string): string {
 
 function mapCollection(
   collection: MongoCollectionAnalysis,
-  detectedRefs: { sourceField: string; targetCollection: string; foreignKeyColumn: string; foreignKeyTable: string }[],
+  detectedRefs: {
+    sourceField: string;
+    targetCollection: string;
+    foreignKeyColumn: string;
+    foreignKeyTable: string;
+  }[],
   conflicts: MigrationConflict[],
   maxDepth: number,
 ): TableMapping {
@@ -161,9 +166,7 @@ function processField(
       type: 'type_mismatch',
       location: `${collectionName}.${field.path}`,
       field: field.name,
-      details: sorted
-        .map(([t, c]) => `${t} in ${c} docs`)
-        .join(', '),
+      details: sorted.map(([t, c]) => `${t} in ${c} docs`).join(', '),
       suggestion: `cast to ${mongoTypeToPgType(majorType)}, log failures`,
     });
   }
@@ -207,7 +210,8 @@ function processField(
 
   const majorType = resolveMajorityType(field.types);
   const pgType = field.isObjectId ? 'uuid' : mongoTypeToPgType(majorType);
-  const hasNullValues = (field.types['null'] || 0) + (field.types['undefined'] || 0) > 0;
+  const hasNullValues =
+    (field.types['null'] || 0) + (field.types['undefined'] || 0) > 0;
   const isNullable = field.frequency < 100 || hasNullValues;
 
   const columnName = toSnakeCase(field.name);
@@ -352,9 +356,8 @@ function handleArray(
       fields: childFields,
     });
   } else if (hasPrimitives && !hasObjects) {
-    const majorType = elementTypes.find(
-      (t) => t !== 'null' && t !== 'undefined',
-    ) || 'string';
+    const majorType =
+      elementTypes.find((t) => t !== 'null' && t !== 'undefined') || 'string';
     const pgElementType = mongoTypeToPgType(majorType);
 
     arrayMappings.push({

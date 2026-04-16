@@ -83,9 +83,7 @@ function extractDbName(url: string): string {
   }
 }
 
-function detectRelationships(
-  analysis: PgAnalysisResult,
-): TableRelationship[] {
+function detectRelationships(analysis: PgAnalysisResult): TableRelationship[] {
   const relationships: TableRelationship[] = [];
   const tableRowCounts = new Map<string, number>();
 
@@ -133,8 +131,7 @@ function detectJunctionTables(
   for (const table of analysis.tables) {
     const fks = table.foreignKeys;
     const nonFkColumns = table.columns.filter(
-      (c) =>
-        !fks.some((fk) => fk.columnName === c.name) && !c.isPrimaryKey,
+      (c) => !fks.some((fk) => fk.columnName === c.name) && !c.isPrimaryKey,
     );
 
     if (fks.length === 2 && nonFkColumns.length <= 2) {
@@ -165,9 +162,7 @@ function mapTableToDocument(
     }
   }
 
-  const incomingRels = relationships.filter(
-    (r) => r.toTable === table.name,
-  );
+  const incomingRels = relationships.filter((r) => r.toTable === table.name);
 
   for (const rel of incomingRels) {
     if (junctionTables.has(rel.fromTable)) {
@@ -192,9 +187,7 @@ function mapTableToDocument(
       continue;
     }
 
-    const childTable = analysis.tables.find(
-      (t) => t.name === rel.fromTable,
-    );
+    const childTable = analysis.tables.find((t) => t.name === rel.fromTable);
     if (!childTable) continue;
 
     const shouldEmbed =
@@ -205,7 +198,10 @@ function mapTableToDocument(
       embeddings.push({
         sourceTable: rel.fromTable,
         foreignKey: rel.fromColumn,
-        embedAs: rel.type === '1:1' ? toCamelCase(rel.fromTable) : toCamelCase(rel.fromTable),
+        embedAs:
+          rel.type === '1:1'
+            ? toCamelCase(rel.fromTable)
+            : toCamelCase(rel.fromTable),
         isArray: rel.type !== '1:1',
       });
     } else {
@@ -229,7 +225,11 @@ function mapTableToDocument(
 function handleManyToMany(
   parentTable: PgTableAnalysis,
   junctionTable: PgTableAnalysis,
-  otherFk: { referencedTable: string; columnName: string; referencedColumn: string },
+  otherFk: {
+    referencedTable: string;
+    columnName: string;
+    referencedColumn: string;
+  },
   analysis: PgAnalysisResult,
   embeddings: EmbedConfig[],
   fieldMappings: Record<string, string>,
@@ -246,13 +246,16 @@ function handleManyToMany(
   );
 
   if (hasExtraColumns.length === 0 && otherTable.columns.length <= 3) {
-    fieldMappings[`_${otherTable.name}`] = toCamelCase(pluralize(otherTable.name));
+    fieldMappings[`_${otherTable.name}`] = toCamelCase(
+      pluralize(otherTable.name),
+    );
   } else {
     embeddings.push({
       sourceTable: junctionTable.name,
-      foreignKey: junctionTable.foreignKeys.find(
-        (fk) => fk.referencedTable === parentTable.name,
-      )?.columnName || '',
+      foreignKey:
+        junctionTable.foreignKeys.find(
+          (fk) => fk.referencedTable === parentTable.name,
+        )?.columnName || '',
       embedAs: toCamelCase(pluralize(otherTable.name)),
       isArray: true,
     });

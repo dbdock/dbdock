@@ -32,13 +32,13 @@ export class RetentionService {
     };
   }
 
-  async applyRetentionPolicy(
-    policy?: RetentionPolicy,
-  ): Promise<CleanupResult> {
+  async applyRetentionPolicy(policy?: RetentionPolicy): Promise<CleanupResult> {
     const retentionPolicy = policy || this.getDefaultRetentionPolicy();
 
     this.logger.log('Starting retention policy enforcement');
-    this.logger.log(`Backup retention: ${retentionPolicy.backupRetentionDays} days`);
+    this.logger.log(
+      `Backup retention: ${retentionPolicy.backupRetentionDays} days`,
+    );
     this.logger.log(`WAL retention: ${retentionPolicy.walRetentionDays} days`);
     this.logger.log(`Min backups to keep: ${retentionPolicy.minBackupsToKeep}`);
 
@@ -108,9 +108,7 @@ export class RetentionService {
         deletedCount++;
         spaceSaved += backupInfo.size;
 
-        this.logger.log(
-          `Deleted backup: ${backup.id} (${backupInfo.reason})`,
-        );
+        this.logger.log(`Deleted backup: ${backup.id} (${backupInfo.reason})`);
       } catch (error) {
         this.logger.error(
           `Failed to delete backup ${backupInfo.id}: ${error.message}`,
@@ -144,10 +142,7 @@ export class RetentionService {
         return info;
       }
 
-      if (
-        policy.maxBackupsToKeep &&
-        index >= policy.maxBackupsToKeep
-      ) {
+      if (policy.maxBackupsToKeep && index >= policy.maxBackupsToKeep) {
         info.shouldDelete = true;
         info.reason = 'Exceeds maximum backups to keep';
         return info;

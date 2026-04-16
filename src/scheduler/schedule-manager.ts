@@ -46,7 +46,9 @@ export class ScheduleManager {
     return config.backup?.schedules || [];
   }
 
-  addSchedule(schedule: Omit<Schedule, 'enabled'> & { enabled?: boolean }): void {
+  addSchedule(
+    schedule: Omit<Schedule, 'enabled'> & { enabled?: boolean },
+  ): void {
     const config = this.loadConfig();
 
     if (!config.backup) {
@@ -78,10 +80,7 @@ export class ScheduleManager {
     this.saveConfig(config);
   }
 
-  updateSchedule(
-    name: string,
-    updates: Partial<Omit<Schedule, 'name'>>,
-  ): void {
+  updateSchedule(name: string, updates: Partial<Omit<Schedule, 'name'>>): void {
     const config = this.loadConfig();
     const schedules = config.backup?.schedules || [];
 
@@ -157,7 +156,12 @@ export class ScheduleManager {
     ];
 
     parts.forEach((part, index) => {
-      if (part === '*' || part.includes('-') || part.includes(',') || part.includes('/')) {
+      if (
+        part === '*' ||
+        part.includes('-') ||
+        part.includes(',') ||
+        part.includes('/')
+      ) {
         return;
       }
 

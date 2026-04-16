@@ -52,7 +52,9 @@ export class StorageService {
         if (endpoint.includes('://')) {
           const match = endpoint.match(/https?:\/\/([^.]+)/);
           if (!match || !match[1]) {
-            throw new Error('Invalid R2 endpoint format. Expected account ID or URL like https://accountId.r2.cloudflarestorage.com');
+            throw new Error(
+              'Invalid R2 endpoint format. Expected account ID or URL like https://accountId.r2.cloudflarestorage.com',
+            );
           }
           accountId = match[1];
         } else if (endpoint.includes('.')) {
@@ -70,11 +72,18 @@ export class StorageService {
         break;
 
       case StorageProvider.CLOUDINARY:
-        if (!storageConfig.cloudinaryApiKey || !storageConfig.cloudinaryApiSecret) {
-          throw new Error('Cloudinary credentials are required (cloudinaryApiKey, cloudinaryApiSecret)');
+        if (
+          !storageConfig.cloudinaryApiKey ||
+          !storageConfig.cloudinaryApiSecret
+        ) {
+          throw new Error(
+            'Cloudinary credentials are required (cloudinaryApiKey, cloudinaryApiSecret)',
+          );
         }
         if (!storageConfig.cloudinaryCloudName) {
-          throw new Error('Cloudinary cloud name is required (cloudinaryCloudName)');
+          throw new Error(
+            'Cloudinary cloud name is required (cloudinaryCloudName)',
+          );
         }
         this.adapter = new CloudinaryStorageAdapter({
           cloudName: storageConfig.cloudinaryCloudName,

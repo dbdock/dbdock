@@ -61,7 +61,9 @@ export function createMockStorageAdapter() {
     ),
     listObjects: jest.fn().mockResolvedValue([]),
     deleteObject: jest.fn().mockResolvedValue(undefined),
-    generatePresignedUrl: jest.fn().mockResolvedValue('https://example.com/presigned-url'),
+    generatePresignedUrl: jest
+      .fn()
+      .mockResolvedValue('https://example.com/presigned-url'),
   };
 }
 
@@ -112,4 +114,3 @@ export function createMockCompressionService() {
     ),
   };
 }
-

@@ -6,7 +6,10 @@ import { LocalStorageAdapter } from '../../storage/adapters/local.adapter';
 import { S3StorageAdapter } from '../../storage/adapters/s3.adapter';
 import { R2StorageAdapter } from '../../storage/adapters/r2.adapter';
 import { CloudinaryStorageAdapter } from '../../storage/adapters/cloudinary.adapter';
-import { IStorageAdapter, StorageObject } from '../../storage/storage.interface';
+import {
+  IStorageAdapter,
+  StorageObject,
+} from '../../storage/storage.interface';
 import { Logger } from '@nestjs/common';
 
 Logger.overrideLogger(false);
@@ -16,7 +19,9 @@ interface DeleteCommandOptions {
   key?: string;
 }
 
-export async function deleteCommand(options: DeleteCommandOptions = {}): Promise<void> {
+export async function deleteCommand(
+  options: DeleteCommandOptions = {},
+): Promise<void> {
   const spinner = ora('Loading configuration...').start();
 
   try {
@@ -27,11 +32,16 @@ export async function deleteCommand(options: DeleteCommandOptions = {}): Promise
 
     switch (config.storage.provider) {
       case 'local':
-        adapter = new LocalStorageAdapter(config.storage.local?.path || './backups');
+        adapter = new LocalStorageAdapter(
+          config.storage.local?.path || './backups',
+        );
         break;
 
       case 's3':
-        if (!config.storage.s3?.accessKeyId || !config.storage.s3?.secretAccessKey) {
+        if (
+          !config.storage.s3?.accessKeyId ||
+          !config.storage.s3?.secretAccessKey
+        ) {
           spinner.fail('S3 credentials are required');
           process.exit(1);
         }
@@ -44,7 +54,10 @@ export async function deleteCommand(options: DeleteCommandOptions = {}): Promise
         break;
 
       case 'r2':
-        if (!config.storage.s3?.accessKeyId || !config.storage.s3?.secretAccessKey) {
+        if (
+          !config.storage.s3?.accessKeyId ||
+          !config.storage.s3?.secretAccessKey
+        ) {
           spinner.fail('R2 credentials are required');
           process.exit(1);
         }
@@ -52,7 +65,8 @@ export async function deleteCommand(options: DeleteCommandOptions = {}): Promise
           spinner.fail('R2 endpoint is required');
           process.exit(1);
         }
-        const accountIdDelete = config.storage.s3.endpoint.match(/https:\/\/([^.]+)/)?.[1];
+        const accountIdDelete =
+          config.storage.s3.endpoint.match(/https:\/\/([^.]+)/)?.[1];
         if (!accountIdDelete) {
           spinner.fail('Invalid R2 endpoint format');
           process.exit(1);
@@ -66,7 +80,11 @@ export async function deleteCommand(options: DeleteCommandOptions = {}): Promise
         break;
 
       case 'cloudinary':
-        if (!config.storage.cloudinary?.cloudName || !config.storage.cloudinary?.apiKey || !config.storage.cloudinary?.apiSecret) {
+        if (
+          !config.storage.cloudinary?.cloudName ||
+          !config.storage.cloudinary?.apiKey ||
+          !config.storage.cloudinary?.apiSecret
+        ) {
           spinner.fail('Cloudinary credentials are required');
           process.exit(1);
         }
@@ -97,7 +115,7 @@ export async function deleteCommand(options: DeleteCommandOptions = {}): Promise
 
       objects = await adapter.listObjects({ prefix });
       objects = objects
-        .filter(obj => obj.key.includes('backup-'))
+        .filter((obj) => obj.key.includes('backup-'))
         .sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime());
     } catch (err) {
       spinner.fail('Failed to list backups');
@@ -130,9 +148,11 @@ export async function deleteCommand(options: DeleteCommandOptions = {}): Promise
         return;
       }
 
-      backupsToDelete = objects.map(obj => obj.key);
+      backupsToDelete = objects.map((obj) => obj.key);
     } else if (options.key) {
-      const backup = objects.find(obj => obj.key === options.key || obj.key.includes(options.key!));
+      const backup = objects.find(
+        (obj) => obj.key === options.key || obj.key.includes(options.key!),
+      );
       if (!backup) {
         logger.error(`\nBackup not found: ${options.key}`);
         process.exit(1);
@@ -182,14 +202,14 @@ export async function deleteCommand(options: DeleteCommandOptions = {}): Promise
           return;
         }
 
-        backupsToDelete = objects.map(obj => obj.key);
+        backupsToDelete = objects.map((obj) => obj.key);
       } else if (action === 'specific') {
         const { selectedBackup } = await inquirer.prompt([
           {
             type: 'list',
             name: 'selectedBackup',
             message: 'Select backup to delete:',
-            choices: objects.map(obj => ({
+            choices: objects.map((obj) => ({
               name: `${obj.key} (${(obj.size / 1024 / 1024).toFixed(2)} MB) - ${obj.lastModified.toLocaleString()}`,
               value: obj.key,
             })),
@@ -217,7 +237,7 @@ export async function deleteCommand(options: DeleteCommandOptions = {}): Promise
             type: 'checkbox',
             name: 'selectedBackups',
             message: 'Select backups to delete (use space to select):',
-            choices: objects.map(obj => ({
+            choices: objects.map((obj) => ({
               name: `${obj.key} (${(obj.size / 1024 / 1024).toFixed(2)} MB) - ${obj.lastModified.toLocaleString()}`,
               value: obj.key,
             })),
@@ -258,7 +278,9 @@ export async function deleteCommand(options: DeleteCommandOptions = {}): Promise
         deletedCount++;
       } catch (err) {
         failedCount++;
-        logger.error(`\nFailed to delete ${key}: ${err instanceof Error ? err.message : String(err)}`);
+        logger.error(
+          `\nFailed to delete ${key}: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
 

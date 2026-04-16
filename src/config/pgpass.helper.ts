@@ -12,7 +12,8 @@ export interface PgPassEntry {
 
 export function getPgPassPath(): string {
   if (os.platform() === 'win32') {
-    const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+    const appData =
+      process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
     return path.join(appData, 'postgresql', 'pgpass.conf');
   }
   return path.join(os.homedir(), '.pgpass');
@@ -86,7 +87,7 @@ export function findPgPassEntry(
   host: string,
   port: number,
   database: string,
-  user: string
+  user: string,
 ): string | null {
   const pgpassPath = getPgPassPath();
 
@@ -97,7 +98,7 @@ export function findPgPassEntry(
   if (!checkPgPassPermissions()) {
     console.warn(
       `Warning: .pgpass file permissions too open. ` +
-      `Run "chmod 600 ${pgpassPath}" to fix.`
+        `Run "chmod 600 ${pgpassPath}" to fix.`,
     );
     return null;
   }
@@ -130,7 +131,7 @@ export function hasPgPassEntry(
   host: string,
   port: number,
   database: string,
-  user: string
+  user: string,
 ): boolean {
   return findPgPassEntry(host, port, database, user) !== null;
 }
@@ -140,7 +141,7 @@ export function createPgPassEntry(
   port: number,
   database: string,
   user: string,
-  password: string
+  password: string,
 ): string {
   const escape = (s: string) => s.replace(/\\/g, '\\\\').replace(/:/g, '\\:');
 
@@ -170,7 +171,7 @@ export function getPgPassInstructions(
   host: string,
   port: number,
   database: string,
-  user: string
+  user: string,
 ): string {
   const pgpassPath = getPgPassPath();
   const entry = `${host}:${port}:${database}:${user}:YOUR_PASSWORD`;

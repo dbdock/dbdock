@@ -69,7 +69,11 @@ export class CryptoService {
     let authTag: Buffer | null = null;
 
     const encryptStream = new Transform({
-      transform(chunk: Buffer, encoding: BufferEncoding, callback: TransformCallback) {
+      transform(
+        chunk: Buffer,
+        encoding: BufferEncoding,
+        callback: TransformCallback,
+      ) {
         try {
           const encrypted = cipher.update(chunk);
           this.push(encrypted);
@@ -126,10 +130,14 @@ export class CryptoService {
     const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
 
     let buffer = Buffer.alloc(0);
-    let authTagSet = false;
+    const authTagSet = false;
 
     return new Transform({
-      transform(chunk: Buffer, encoding: BufferEncoding, callback: TransformCallback) {
+      transform(
+        chunk: Buffer,
+        encoding: BufferEncoding,
+        callback: TransformCallback,
+      ) {
         try {
           buffer = Buffer.concat([buffer, chunk]);
 

@@ -10,7 +10,12 @@ import {
   MigrationResult,
   TableMigrationResult,
 } from '../types';
-import { objectIdToUuid, coerceValue, mongoTypeToPgType, resolveMajorityType } from '../type.mapper';
+import {
+  objectIdToUuid,
+  coerceValue,
+  mongoTypeToPgType,
+  resolveMajorityType,
+} from '../type.mapper';
 
 interface MigrationError {
   table: string;
@@ -90,7 +95,10 @@ export async function executeMongoToPostgres(
   };
 }
 
-async function createErrorsTable(client: PoolClient, schema: string): Promise<void> {
+async function createErrorsTable(
+  client: PoolClient,
+  schema: string,
+): Promise<void> {
   await client.query(`
     CREATE TABLE IF NOT EXISTS ${schema}._migration_errors (
       id serial PRIMARY KEY,
@@ -303,13 +311,7 @@ async function migrateCollection(
   }
 
   if (batch.length > 0) {
-    const failed = await processBatch(
-      pgClient,
-      mapping,
-      batch,
-      schema,
-      errors,
-    );
+    const failed = await processBatch(pgClient, mapping, batch, schema, errors);
     failedCount += failed;
     processed += batch.length;
     onProgress?.(mapping.targetTable, processed, totalCount);
@@ -384,7 +386,11 @@ async function insertDocument(
       pgValue = result.success ? result.value : null;
     } else if (value instanceof Date) {
       pgValue = value;
-    } else if (typeof value === 'object' && value !== null && field.targetType === 'jsonb') {
+    } else if (
+      typeof value === 'object' &&
+      value !== null &&
+      field.targetType === 'jsonb'
+    ) {
       pgValue = JSON.stringify(value);
     } else if (value !== undefined) {
       pgValue = value?.toString?.() ?? value;
@@ -407,7 +413,11 @@ async function insertDocument(
   for (const nested of mapping.nestedMappings) {
     if (nested.strategy === 'table' && nested.fields) {
       const nestedValue = getNestedValue(doc, nested.sourceField);
-      if (nestedValue && typeof nestedValue === 'object' && !Array.isArray(nestedValue)) {
+      if (
+        nestedValue &&
+        typeof nestedValue === 'object' &&
+        !Array.isArray(nestedValue)
+      ) {
         await insertNestedObject(
           pgClient,
           schema,
@@ -446,7 +456,10 @@ async function insertNestedObject(
       columns.push('"id"');
       values.push(randomUUID());
       placeholders.push(`$${paramIdx++}`);
-    } else if (field.sourceField.includes('_id') && field.targetType === 'uuid') {
+    } else if (
+      field.sourceField.includes('_id') &&
+      field.targetType === 'uuid'
+    ) {
       columns.push(`"${field.targetColumn}"`);
       values.push(parentId);
       placeholders.push(`$${paramIdx++}`);
@@ -496,7 +509,7 @@ async function insertArrayElements(
             field.sourceField.split('.').pop() || field.sourceField;
           const val =
             typeof element === 'object' && element
-              ? element[fieldName] ?? null
+              ? (element[fieldName] ?? null)
               : null;
           columns.push(`"${field.targetColumn}"`);
           vals.push(val instanceof Date ? val : val);

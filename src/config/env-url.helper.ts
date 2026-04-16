@@ -6,10 +6,14 @@ export interface PostgresConfigFromUrl {
   database: string;
 }
 
-export function parsePostgresUrlToConfig(urlString: string): PostgresConfigFromUrl {
+export function parsePostgresUrlToConfig(
+  urlString: string,
+): PostgresConfigFromUrl {
   const url = new URL(urlString);
   if (url.protocol !== 'postgresql:' && url.protocol !== 'postgres:') {
-    throw new Error(`Invalid protocol "${url.protocol}". Expected "postgresql://" or "postgres://"`);
+    throw new Error(
+      `Invalid protocol "${url.protocol}". Expected "postgresql://" or "postgres://"`,
+    );
   }
   const database = (url.pathname || '/').replace(/^\//, '') || 'postgres';
   const port = parseInt(url.port || '5432', 10);
@@ -26,7 +30,9 @@ export function getDbUrlFromEnv(): string | undefined {
   return process.env.DBDOCK_DB_URL || process.env.DATABASE_URL;
 }
 
-export function applyDbUrlToPostgresConfig(config: Record<string, unknown>): Record<string, unknown> {
+export function applyDbUrlToPostgresConfig(
+  config: Record<string, unknown>,
+): Record<string, unknown> {
   const url = getDbUrlFromEnv();
   if (!url || !url.trim()) return config;
   const parsed = parsePostgresUrlToConfig(url);
@@ -40,7 +46,9 @@ export function applyDbUrlToPostgresConfig(config: Record<string, unknown>): Rec
   return merged;
 }
 
-export function applyDbUrlToCliDatabase(config: Record<string, unknown>): Record<string, unknown> {
+export function applyDbUrlToCliDatabase(
+  config: Record<string, unknown>,
+): Record<string, unknown> {
   const url = getDbUrlFromEnv();
   if (!url || !url.trim()) return config;
   const parsed = parsePostgresUrlToConfig(url);

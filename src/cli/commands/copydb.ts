@@ -3,12 +3,14 @@ import chalk from 'chalk';
 import inquirer from 'inquirer';
 import { spawn } from 'child_process';
 import { logger } from '../utils/logger';
+import { driverCopyCommand } from './driver-copy';
 import { URL } from 'url';
 
 interface CopyDbOptions {
   schemaOnly?: boolean;
   dataOnly?: boolean;
   verbose?: boolean;
+  driver?: boolean;
 }
 
 interface DbConnectionInfo {
@@ -65,20 +67,28 @@ function maskPassword(url: string): string {
 async function getTableCount(conn: DbConnectionInfo): Promise<number> {
   return new Promise((resolve) => {
     const psqlArgs = [
-      '-h', conn.host,
-      '-p', conn.port,
-      '-U', conn.user,
-      '-d', conn.database,
-      '-t', '-A',
+      '-h',
+      conn.host,
+      '-p',
+      conn.port,
+      '-U',
+      conn.user,
+      '-d',
+      conn.database,
+      '-t',
+      '-A',
       '--no-password',
-      '-c', `SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'`,
+      '-c',
+      `SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'`,
     ];
 
     const env = { ...process.env, PGPASSWORD: conn.password };
     const proc = spawn('psql', psqlArgs, { env });
 
     let output = '';
-    proc.stdout.on('data', (data: Buffer) => { output += data.toString(); });
+    proc.stdout.on('data', (data: Buffer) => {
+      output += data.toString();
+    });
     proc.on('close', (code) => {
       if (code === 0) {
         resolve(parseInt(output.trim()) || 0);
@@ -93,20 +103,28 @@ async function getTableCount(conn: DbConnectionInfo): Promise<number> {
 async function getDatabaseSize(conn: DbConnectionInfo): Promise<string> {
   return new Promise((resolve) => {
     const psqlArgs = [
-      '-h', conn.host,
-      '-p', conn.port,
-      '-U', conn.user,
-      '-d', conn.database,
-      '-t', '-A',
+      '-h',
+      conn.host,
+      '-p',
+      conn.port,
+      '-U',
+      conn.user,
+      '-d',
+      conn.database,
+      '-t',
+      '-A',
       '--no-password',
-      '-c', `SELECT pg_size_pretty(pg_database_size('${conn.database}'))`,
+      '-c',
+      `SELECT pg_size_pretty(pg_database_size('${conn.database}'))`,
     ];
 
     const env = { ...process.env, PGPASSWORD: conn.password };
     const proc = spawn('psql', psqlArgs, { env });
 
     let output = '';
-    proc.stdout.on('data', (data: Buffer) => { output += data.toString(); });
+    proc.stdout.on('data', (data: Buffer) => {
+      output += data.toString();
+    });
     proc.on('close', (code) => {
       if (code === 0) {
         resolve(output.trim() || 'Unknown');
@@ -118,23 +136,34 @@ async function getDatabaseSize(conn: DbConnectionInfo): Promise<string> {
   });
 }
 
-async function testConnection(conn: DbConnectionInfo, label: string): Promise<boolean> {
+async function testConnection(
+  conn: DbConnectionInfo,
+  label: string,
+): Promise<boolean> {
   return new Promise((resolve) => {
     const psqlArgs = [
-      '-h', conn.host,
-      '-p', conn.port,
-      '-U', conn.user,
-      '-d', conn.database,
-      '-t', '-A',
+      '-h',
+      conn.host,
+      '-p',
+      conn.port,
+      '-U',
+      conn.user,
+      '-d',
+      conn.database,
+      '-t',
+      '-A',
       '--no-password',
-      '-c', 'SELECT 1',
+      '-c',
+      'SELECT 1',
     ];
 
     const env = { ...process.env, PGPASSWORD: conn.password };
     const proc = spawn('psql', psqlArgs, { env });
 
     let errorOutput = '';
-    proc.stderr.on('data', (data: Buffer) => { errorOutput += data.toString(); });
+    proc.stderr.on('data', (data: Buffer) => {
+      errorOutput += data.toString();
+    });
 
     proc.on('close', (code) => {
       if (code !== 0) {
@@ -147,7 +176,9 @@ async function testConnection(conn: DbConnectionInfo, label: string): Promise<bo
 
     proc.on('error', (err) => {
       if (err.message.includes('ENOENT')) {
-        logger.error(`"psql" not found. Please install PostgreSQL client tools.`);
+        logger.error(
+          `"psql" not found. Please install PostgreSQL client tools.`,
+        );
       } else {
         logger.error(`${label} connection error: ${err.message}`);
       }
@@ -161,6 +192,10 @@ export async function copydbCommand(
   targetUrl: string,
   options: CopyDbOptions,
 ): Promise<void> {
+  if (options.driver) {
+    return driverCopyCommand(sourceUrl, targetUrl, options);
+  }
+
   console.log('');
   console.log(chalk.bold('  DBDock - Database Copy'));
   console.log(chalk.gray('  ─'.repeat(30)));
@@ -172,14 +207,18 @@ export async function copydbCommand(
   try {
     source = parsePostgresUrl(sourceUrl);
   } catch (error) {
-    logger.error(`Source URL: ${error instanceof Error ? error.message : String(error)}`);
+    logger.error(
+      `Source URL: ${error instanceof Error ? error.message : String(error)}`,
+    );
     process.exit(1);
   }
 
   try {
     target = parsePostgresUrl(targetUrl);
   } catch (error) {
-    logger.error(`Target URL: ${error instanceof Error ? error.message : String(error)}`);
+    logger.error(
+      `Target URL: ${error instanceof Error ? error.message : String(error)}`,
+    );
     process.exit(1);
   }
 
@@ -231,7 +270,9 @@ export async function copydbCommand(
   logger.info(`Mode: ${mode}`);
 
   if (targetTables > 0) {
-    logger.warn(`Target database has ${targetTables} existing table(s). They will be overwritten.`);
+    logger.warn(
+      `Target database has ${targetTables} existing table(s). They will be overwritten.`,
+    );
   }
 
   console.log('');
@@ -255,10 +296,14 @@ export async function copydbCommand(
   const copySpinner = ora('Starting database copy...').start();
 
   const pgDumpArgs = [
-    '-h', source.host,
-    '-p', source.port,
-    '-U', source.user,
-    '-d', source.database,
+    '-h',
+    source.host,
+    '-p',
+    source.port,
+    '-U',
+    source.user,
+    '-d',
+    source.database,
     '--format=custom',
     '--no-password',
   ];
@@ -268,11 +313,16 @@ export async function copydbCommand(
   if (options.verbose) pgDumpArgs.push('--verbose');
 
   const pgRestoreArgs = [
-    '-h', target.host,
-    '-p', target.port,
-    '-U', target.user,
-    '-d', target.database,
-    '-F', 'c',
+    '-h',
+    target.host,
+    '-p',
+    target.port,
+    '-U',
+    target.user,
+    '-d',
+    target.database,
+    '-F',
+    'c',
     '--clean',
     '--if-exists',
     '--no-owner',
@@ -301,7 +351,11 @@ export async function copydbCommand(
 
       pgDump.on('error', (err) => {
         if (err.message.includes('ENOENT')) {
-          reject(new Error('"pg_dump" not found. Please install PostgreSQL client tools.'));
+          reject(
+            new Error(
+              '"pg_dump" not found. Please install PostgreSQL client tools.',
+            ),
+          );
         } else {
           reject(new Error(`pg_dump error: ${err.message}`));
         }
@@ -309,7 +363,11 @@ export async function copydbCommand(
 
       pgRestore.on('error', (err) => {
         if (err.message.includes('ENOENT')) {
-          reject(new Error('"pg_restore" not found. Please install PostgreSQL client tools.'));
+          reject(
+            new Error(
+              '"pg_restore" not found. Please install PostgreSQL client tools.',
+            ),
+          );
         } else {
           reject(new Error(`pg_restore error: ${err.message}`));
         }
@@ -323,16 +381,26 @@ export async function copydbCommand(
       });
 
       const ignoredPatterns = [
-        'NOTICE', 'WARNING', 'transaction_timeout',
-        'errors ignored on restore', 'unrecognized configuration parameter',
-        'already exists', 'does not exist',
-        'no privileges could be revoked', 'no privileges were granted',
-        'role', 'extension', 'schema', 'procedural language',
+        'NOTICE',
+        'WARNING',
+        'transaction_timeout',
+        'errors ignored on restore',
+        'unrecognized configuration parameter',
+        'already exists',
+        'does not exist',
+        'no privileges could be revoked',
+        'no privileges were granted',
+        'role',
+        'extension',
+        'schema',
+        'procedural language',
       ];
 
       pgRestore.stderr.on('data', (data: Buffer) => {
         const msg = data.toString().toLowerCase();
-        const isIgnorable = ignoredPatterns.some((p) => msg.includes(p.toLowerCase()));
+        const isIgnorable = ignoredPatterns.some((p) =>
+          msg.includes(p.toLowerCase()),
+        );
         if (!isIgnorable && data.toString().trim()) {
           restoreError += data.toString();
         }
@@ -349,7 +417,9 @@ export async function copydbCommand(
       pgDump.on('close', (code) => {
         if (code !== 0 && dumpError) {
           pgRestore.kill();
-          reject(new Error(`pg_dump failed (code ${code}): ${dumpError.trim()}`));
+          reject(
+            new Error(`pg_dump failed (code ${code}): ${dumpError.trim()}`),
+          );
         }
       });
 
@@ -357,11 +427,13 @@ export async function copydbCommand(
         if (code === 0 || code === 1) {
           resolve();
         } else {
-          reject(new Error(
-            restoreError
-              ? `pg_restore failed (code ${code}): ${restoreError.trim()}`
-              : `pg_restore exited with code ${code}`,
-          ));
+          reject(
+            new Error(
+              restoreError
+                ? `pg_restore failed (code ${code}): ${restoreError.trim()}`
+                : `pg_restore exited with code ${code}`,
+            ),
+          );
         }
       });
     });

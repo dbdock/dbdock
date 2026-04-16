@@ -366,19 +366,19 @@ export async function restoreCommand(): Promise<void> {
       selectedBackup = selected;
     }
 
-interface RestoreTargetAnswer {
-  target: 'current' | 'new';
-}
+    interface RestoreTargetAnswer {
+      target: 'current' | 'new';
+    }
 
-interface MigrationDetailsAnswer {
-  host: string;
-  port: number;
-  username: string;
-  password: string;
-  database: string;
-}
+    interface MigrationDetailsAnswer {
+      host: string;
+      port: number;
+      username: string;
+      password: string;
+      database: string;
+    }
 
-// ... existing interfaces ...
+    // ... existing interfaces ...
 
     const selectedBackupObj = objects.find((obj) => obj.key === selectedBackup);
     if (selectedBackupObj) {
@@ -450,9 +450,10 @@ interface MigrationDetailsAnswer {
       {
         type: 'confirm',
         name: 'confirm',
-        message: target === 'new' 
-          ? `This will restore to ${targetDbConfig.host}:${targetDbConfig.port}/${targetDbConfig.database}. Continue?`
-          : 'This will overwrite the current database. Continue?',
+        message:
+          target === 'new'
+            ? `This will restore to ${targetDbConfig.host}:${targetDbConfig.port}/${targetDbConfig.database}. Continue?`
+            : 'This will overwrite the current database. Continue?',
         default: false,
       },
     ])) as ConfirmAnswer;
@@ -477,7 +478,10 @@ interface MigrationDetailsAnswer {
       '-p',
       String(targetDbConfig.port || 5432),
       '-U',
-      targetDbConfig.user || targetDbConfig.username || process.env.DBDOCK_DB_USER || 'postgres',
+      targetDbConfig.user ||
+        targetDbConfig.username ||
+        process.env.DBDOCK_DB_USER ||
+        'postgres',
       '-d',
       targetDbConfig.database || 'postgres',
       '-F',
@@ -658,12 +662,12 @@ interface MigrationDetailsAnswer {
     }
   } catch (error) {
     spinner.stop();
-    logger.error(`Restore failed: ${error instanceof Error ? error.message : String(error)}`);
+    logger.error(
+      `Restore failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
     process.exit(1);
   }
 }
-
-
 
 interface DatabaseStats {
   name: string;
@@ -689,7 +693,10 @@ async function getCurrentDatabaseStats(
     '-p',
     String(dbConfig.port || 5432),
     '-U',
-    dbConfig.user || dbConfig.username || process.env.DBDOCK_DB_USER || 'postgres',
+    dbConfig.user ||
+      dbConfig.username ||
+      process.env.DBDOCK_DB_USER ||
+      'postgres',
     '-d',
     dbConfig.database || 'postgres',
     '-t',
@@ -755,7 +762,10 @@ function parsePgRestoreError(errorOutput: string): string {
     );
   }
 
-  if (lowerError.includes('connection refused') || lowerError.includes('could not connect')) {
+  if (
+    lowerError.includes('connection refused') ||
+    lowerError.includes('could not connect')
+  ) {
     return (
       'Failed to connect to database\n\n' +
       'Please verify:\n' +
@@ -776,7 +786,10 @@ function parsePgRestoreError(errorOutput: string): string {
     );
   }
 
-  if (lowerError.includes('database') && lowerError.includes('does not exist')) {
+  if (
+    lowerError.includes('database') &&
+    lowerError.includes('does not exist')
+  ) {
     return (
       'Target database does not exist\n\n' +
       'Please:\n' +
@@ -785,7 +798,10 @@ function parsePgRestoreError(errorOutput: string): string {
     );
   }
 
-  if (lowerError.includes('disk full') || lowerError.includes('no space left')) {
+  if (
+    lowerError.includes('disk full') ||
+    lowerError.includes('no space left')
+  ) {
     return (
       'Insufficient disk space\n\n' +
       'Please:\n' +
@@ -794,7 +810,10 @@ function parsePgRestoreError(errorOutput: string): string {
     );
   }
 
-  if (lowerError.includes('corrupted') || lowerError.includes('invalid backup')) {
+  if (
+    lowerError.includes('corrupted') ||
+    lowerError.includes('invalid backup')
+  ) {
     return (
       'Backup file appears to be corrupted\n\n' +
       'Please:\n' +

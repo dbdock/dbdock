@@ -75,7 +75,8 @@ export class AlertService {
       size: ((metadata.size || 0) / 1024 / 1024).toFixed(2),
       compressedSize: ((metadata.compressedSize || 0) / 1024 / 1024).toFixed(2),
       duration: ((metadata.duration || 0) / 1000).toFixed(2),
-      timestamp: metadata.endTime?.toLocaleString() || new Date().toLocaleString(),
+      timestamp:
+        metadata.endTime?.toLocaleString() || new Date().toLocaleString(),
       downloadUrl,
     };
 
@@ -94,7 +95,8 @@ export class AlertService {
     const context = {
       database: metadata.database,
       backupId: metadata.id,
-      timestamp: metadata.endTime?.toLocaleString() || new Date().toLocaleString(),
+      timestamp:
+        metadata.endTime?.toLocaleString() || new Date().toLocaleString(),
       error: error.message,
     };
 
@@ -148,7 +150,10 @@ export class AlertService {
           this.customTemplates[alertContext.type] ||
           DEFAULT_TEMPLATES[alertContext.type];
 
-        const subject = renderTemplate(template.subject, alertContext.details || {});
+        const subject = renderTemplate(
+          template.subject,
+          alertContext.details || {},
+        );
         const html = renderTemplate(template.body, alertContext.details || {});
         const text = html.replace(/<[^>]*>/g, '');
 
@@ -184,7 +189,10 @@ export class AlertService {
     // Send Custom Webhook Alert
     if (alertsConfig.customWebhook) {
       try {
-        await this.sendCustomWebhookAlert(alertsConfig.customWebhook, alertContext);
+        await this.sendCustomWebhookAlert(
+          alertsConfig.customWebhook,
+          alertContext,
+        );
         this.logger.log(`Custom webhook alert sent: ${alertContext.type}`);
       } catch (error) {
         this.logger.error(
@@ -194,7 +202,10 @@ export class AlertService {
     }
   }
 
-  private async sendSlackAlert(webhookUrl: string, context: AlertContext): Promise<void> {
+  private async sendSlackAlert(
+    webhookUrl: string,
+    context: AlertContext,
+  ): Promise<void> {
     let color = '#36a64f'; // Green for success
     let title = 'DBDock Alert';
     let text = '';
@@ -228,7 +239,17 @@ export class AlertService {
           title,
           text,
           fields: Object.entries(context.details || {})
-            .filter(([key]) => !['database', 'size', 'duration', 'error', 'backupsDeleted', 'spaceFreed'].includes(key))
+            .filter(
+              ([key]) =>
+                ![
+                  'database',
+                  'size',
+                  'duration',
+                  'error',
+                  'backupsDeleted',
+                  'spaceFreed',
+                ].includes(key),
+            )
             .map(([key, value]) => ({
               title: key.charAt(0).toUpperCase() + key.slice(1),
               value: String(value),
@@ -280,7 +301,9 @@ export class AlertService {
     });
 
     if (!response.ok) {
-      throw new Error(`Webhook error: ${response.status} ${response.statusText}`);
+      throw new Error(
+        `Webhook error: ${response.status} ${response.statusText}`,
+      );
     }
   }
 

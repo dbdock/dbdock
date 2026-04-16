@@ -1,4 +1,8 @@
-import { MongoCollectionAnalysis, MongoFieldInfo, DetectedReference } from './types';
+import {
+  MongoCollectionAnalysis,
+  MongoFieldInfo,
+  DetectedReference,
+} from './types';
 import { singularize, toSnakeCase } from './type.mapper';
 
 export function detectReferences(
@@ -9,7 +13,12 @@ export function detectReferences(
 
   for (const collection of collections) {
     const refs: DetectedReference[] = [];
-    detectFieldReferences(collection.fields, collection.name, collectionNames, refs);
+    detectFieldReferences(
+      collection.fields,
+      collection.name,
+      collectionNames,
+      refs,
+    );
     result.set(collection.name, refs);
   }
 
@@ -39,7 +48,12 @@ function detectFieldReferences(
     }
 
     if (field.nestedFields) {
-      detectFieldReferences(field.nestedFields, collectionName, collectionNames, refs);
+      detectFieldReferences(
+        field.nestedFields,
+        collectionName,
+        collectionNames,
+        refs,
+      );
     }
   }
 }

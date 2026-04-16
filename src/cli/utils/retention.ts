@@ -1,4 +1,7 @@
-import { IStorageAdapter, StorageObject } from '../../storage/storage.interface';
+import {
+  IStorageAdapter,
+  StorageObject,
+} from '../../storage/storage.interface';
 import { logger } from './logger';
 
 export interface RetentionConfig {
@@ -98,7 +101,11 @@ export async function applyRetention(
   };
 
   try {
-    const backupInfo = await evaluateRetention(adapter, config, storageProvider);
+    const backupInfo = await evaluateRetention(
+      adapter,
+      config,
+      storageProvider,
+    );
     stats.totalBackups = backupInfo.length;
 
     const toDelete = backupInfo.filter((b) => b.shouldDelete);

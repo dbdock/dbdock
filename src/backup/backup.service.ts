@@ -158,7 +158,8 @@ export class BackupService {
       };
     } catch (error) {
       metadata.status = BackupStatus.FAILED;
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       metadata.error = errorMessage;
       metadata.endTime = new Date();
 
@@ -182,7 +183,7 @@ export class BackupService {
     process: ReturnType<typeof spawn>;
   } {
     const pgConfig = this.configService.get('postgres');
-    
+
     // Default to 'custom' format if not specified
     // Map CLI-style formats to pg_dump flags
     const formatMap: Record<string, string> = {
@@ -191,7 +192,7 @@ export class BackupService {
       directory: 'directory',
       tar: 'tar',
     };
-    
+
     const format = options.format || 'custom';
     const pgFormat = formatMap[format] || 'custom';
 
@@ -224,7 +225,7 @@ export class BackupService {
       pgConfig.host,
       pgConfig.port,
       pgConfig.database,
-      pgConfig.user
+      pgConfig.user,
     );
 
     const env: NodeJS.ProcessEnv = { ...process.env };
@@ -289,7 +290,7 @@ export class BackupService {
       directory: 'dir',
       tar: 'tar',
     };
-    
+
     const extension = extensionMap[format] || 'sql';
 
     const storageConfig = this.configService.get('storage');

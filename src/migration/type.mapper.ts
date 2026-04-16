@@ -95,7 +95,11 @@ export function detectMongoFieldType(value: any): string {
     if (value._bsontype === 'BSONRegExp') return 'regex';
 
     const oid = value.toString?.();
-    if (oid && /^[a-f0-9]{24}$/.test(oid) && value.constructor?.name === 'ObjectId')
+    if (
+      oid &&
+      /^[a-f0-9]{24}$/.test(oid) &&
+      value.constructor?.name === 'ObjectId'
+    )
       return 'objectId';
 
     return 'object';
@@ -126,7 +130,12 @@ export function coerceValue(
 
     if (fromType === toType) return { success: true, value };
 
-    if (toType === 'numeric' || toType === 'double precision' || toType === 'integer' || toType === 'bigint') {
+    if (
+      toType === 'numeric' ||
+      toType === 'double precision' ||
+      toType === 'integer' ||
+      toType === 'bigint'
+    ) {
       const num = Number(value);
       if (isNaN(num)) return { success: false, value };
       if (toType === 'integer' && !Number.isInteger(num))

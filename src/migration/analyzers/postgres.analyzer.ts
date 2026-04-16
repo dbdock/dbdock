@@ -11,7 +11,9 @@ import {
 export function parsePostgresUrl(urlString: string): ParsedDatabaseUrl {
   const url = new URL(urlString);
   if (url.protocol !== 'postgresql:' && url.protocol !== 'postgres:') {
-    throw new Error(`Invalid protocol "${url.protocol}". Expected "postgresql://" or "postgres://"`);
+    throw new Error(
+      `Invalid protocol "${url.protocol}". Expected "postgresql://" or "postgres://"`,
+    );
   }
   const database = url.pathname.replace(/^\//, '') || 'postgres';
   return {
@@ -83,7 +85,10 @@ async function analyzeTable(
   };
 }
 
-async function getColumns(pool: Pool, tableName: string): Promise<PgColumnInfo[]> {
+async function getColumns(
+  pool: Pool,
+  tableName: string,
+): Promise<PgColumnInfo[]> {
   const result = await pool.query(
     `
     SELECT
@@ -170,7 +175,10 @@ async function getForeignKeys(
   }));
 }
 
-async function getIndexes(pool: Pool, tableName: string): Promise<PgIndexInfo[]> {
+async function getIndexes(
+  pool: Pool,
+  tableName: string,
+): Promise<PgIndexInfo[]> {
   const result = await pool.query(
     `
     SELECT

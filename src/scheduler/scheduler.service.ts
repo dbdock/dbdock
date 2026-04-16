@@ -74,7 +74,7 @@ export class SchedulerService implements OnModuleInit {
         await this.executeScheduledBackup(schedule.name);
       });
 
-      this.schedulerRegistry.addCronJob(schedule.name, job as any);
+      this.schedulerRegistry.addCronJob(schedule.name, job);
       job.start();
 
       this.registeredJobs.set(schedule.name, job);

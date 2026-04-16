@@ -68,7 +68,10 @@ export async function createBackupStandalone(
     '-p',
     String(dbConfig.port || 5432),
     '-U',
-    dbConfig.user || dbConfig.username || process.env.DBDOCK_DB_USER || 'postgres',
+    dbConfig.user ||
+      dbConfig.username ||
+      process.env.DBDOCK_DB_USER ||
+      'postgres',
     '-d',
     dbConfig.database || 'postgres',
     '-F',

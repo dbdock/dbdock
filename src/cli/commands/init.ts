@@ -109,7 +109,8 @@ export async function initCommand(): Promise<void> {
     {
       type: 'password',
       name: 'password',
-      message: 'Database password (press Enter to skip and set via DBDOCK_DB_PASSWORD env var):',
+      message:
+        'Database password (press Enter to skip and set via DBDOCK_DB_PASSWORD env var):',
     },
     {
       type: 'input',
@@ -202,14 +203,16 @@ export async function initCommand(): Promise<void> {
     {
       type: 'input',
       name: 's3AccessKey',
-      message: 'Access key ID (press Enter to skip and set via DBDOCK_STORAGE_ACCESS_KEY env var):',
+      message:
+        'Access key ID (press Enter to skip and set via DBDOCK_STORAGE_ACCESS_KEY env var):',
       when: (answers: InitAnswers) =>
         answers.storageProvider === 's3' || answers.storageProvider === 'r2',
     },
     {
       type: 'password',
       name: 's3SecretKey',
-      message: 'Secret access key (press Enter to skip and set via DBDOCK_STORAGE_SECRET_KEY env var):',
+      message:
+        'Secret access key (press Enter to skip and set via DBDOCK_STORAGE_SECRET_KEY env var):',
       when: (answers: InitAnswers) =>
         answers.storageProvider === 's3' || answers.storageProvider === 'r2',
     },
@@ -222,13 +225,15 @@ export async function initCommand(): Promise<void> {
     {
       type: 'input',
       name: 'cloudinaryApiKey',
-      message: 'Cloudinary API key (press Enter to skip and set via DBDOCK_CLOUDINARY_API_KEY env var):',
+      message:
+        'Cloudinary API key (press Enter to skip and set via DBDOCK_CLOUDINARY_API_KEY env var):',
       when: (answers: InitAnswers) => answers.storageProvider === 'cloudinary',
     },
     {
       type: 'password',
       name: 'cloudinaryApiSecret',
-      message: 'Cloudinary API secret (press Enter to skip and set via DBDOCK_CLOUDINARY_API_SECRET env var):',
+      message:
+        'Cloudinary API secret (press Enter to skip and set via DBDOCK_CLOUDINARY_API_SECRET env var):',
       when: (answers: InitAnswers) => answers.storageProvider === 'cloudinary',
     },
     {
@@ -497,7 +502,9 @@ export async function initCommand(): Promise<void> {
                 },
               },
               from: answers.emailFrom,
-              to: answers.emailTo.split(',').map((email: string) => email.trim()),
+              to: answers.emailTo
+                .split(',')
+                .map((email: string) => email.trim()),
             },
           }),
         ...(answers.enableSlackAlerts &&
@@ -530,7 +537,10 @@ export async function initCommand(): Promise<void> {
     }
   }
 
-  const gitignoreStatus = updateGitignore(config, Object.keys(secrets).length > 0);
+  const gitignoreStatus = updateGitignore(
+    config,
+    Object.keys(secrets).length > 0,
+  );
 
   if (gitignoreStatus.created) {
     logger.success(`.gitignore created`);
@@ -559,7 +569,9 @@ export async function initCommand(): Promise<void> {
 
   if (Object.keys(secrets).length > 0) {
     logger.info('\n🔐 Security Configuration:');
-    logger.log(`  - Non-sensitive config saved to: ${CONFIG_FILE} (safe for version control)`);
+    logger.log(
+      `  - Non-sensitive config saved to: ${CONFIG_FILE} (safe for version control)`,
+    );
     logger.log(`  - Secrets saved to: ${ENV_FILE} (DO NOT commit this file)`);
     logger.log(`  - ${ENV_FILE} has been added to .gitignore`);
   }
@@ -673,7 +685,10 @@ interface GitignoreStatus {
   created: boolean;
 }
 
-function updateGitignore(config: CLIConfig, hasSecrets: boolean = false): GitignoreStatus {
+function updateGitignore(
+  config: CLIConfig,
+  hasSecrets: boolean = false,
+): GitignoreStatus {
   const gitignorePath = join(process.cwd(), '.gitignore');
   const entriesToAdd: string[] = [];
 
@@ -726,7 +741,9 @@ function updateGitignore(config: CLIConfig, hasSecrets: boolean = false): Gitign
 
   let localPathAlreadyIgnored = false;
   if (config.storage.provider === 'local' && config.storage.local?.path) {
-    const normalizedPath = config.storage.local.path.replace(/^\.\//, '').replace(/\/$/, '');
+    const normalizedPath = config.storage.local.path
+      .replace(/^\.\//, '')
+      .replace(/\/$/, '');
     localPathAlreadyIgnored = isEntryIgnored(normalizedPath);
     status.localPathAlreadyExists = localPathAlreadyIgnored;
   }
@@ -739,8 +756,14 @@ function updateGitignore(config: CLIConfig, hasSecrets: boolean = false): Gitign
 
   const newEntries: string[] = [];
 
-  if (config.storage.provider === 'local' && config.storage.local?.path && !localPathAlreadyIgnored) {
-    const normalizedPath = config.storage.local.path.replace(/^\.\//, '').replace(/\/$/, '');
+  if (
+    config.storage.provider === 'local' &&
+    config.storage.local?.path &&
+    !localPathAlreadyIgnored
+  ) {
+    const normalizedPath = config.storage.local.path
+      .replace(/^\.\//, '')
+      .replace(/\/$/, '');
     newEntries.push(normalizedPath);
     status.localPathUpdated = true;
   }

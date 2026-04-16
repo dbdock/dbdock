@@ -21,7 +21,9 @@ interface CleanupOptions {
   force?: boolean;
 }
 
-export async function cleanupCommand(options: CleanupOptions = {}): Promise<void> {
+export async function cleanupCommand(
+  options: CleanupOptions = {},
+): Promise<void> {
   const spinner = ora('Loading configuration...').start();
 
   try {
@@ -69,11 +71,16 @@ export async function cleanupCommand(options: CleanupOptions = {}): Promise<void
 
     switch (config.storage.provider) {
       case 'local':
-        adapter = new LocalStorageAdapter(config.storage.local?.path || './backups');
+        adapter = new LocalStorageAdapter(
+          config.storage.local?.path || './backups',
+        );
         break;
       case 's3':
       case 'r2':
-        if (!config.storage.s3?.accessKeyId || !config.storage.s3?.secretAccessKey) {
+        if (
+          !config.storage.s3?.accessKeyId ||
+          !config.storage.s3?.secretAccessKey
+        ) {
           spinner.fail('Storage credentials required');
           process.exit(1);
         }
@@ -86,7 +93,11 @@ export async function cleanupCommand(options: CleanupOptions = {}): Promise<void
         });
         break;
       case 'cloudinary':
-        if (!config.storage.cloudinary?.cloudName || !config.storage.cloudinary?.apiKey || !config.storage.cloudinary?.apiSecret) {
+        if (
+          !config.storage.cloudinary?.cloudName ||
+          !config.storage.cloudinary?.apiKey ||
+          !config.storage.cloudinary?.apiSecret
+        ) {
           spinner.fail('Cloudinary credentials required');
           process.exit(1);
         }
@@ -140,7 +151,9 @@ export async function cleanupCommand(options: CleanupOptions = {}): Promise<void
           const displayName = backup.key.replace('dbdock_backups/', '');
           logger.log(`  ${index + 1}. ${displayName}`);
           logger.log(`     Reason: ${backup.reason}`);
-          logger.log(`     Age: ${Math.floor((Date.now() - backup.lastModified.getTime()) / (1000 * 60 * 60 * 24))} days`);
+          logger.log(
+            `     Age: ${Math.floor((Date.now() - backup.lastModified.getTime()) / (1000 * 60 * 60 * 24))} days`,
+          );
         });
       }
     } else {

@@ -21,9 +21,7 @@ export async function analyzeCommand(url: string): Promise<void> {
   try {
     parsed = parseDatabaseUrl(url);
   } catch (error) {
-    logger.error(
-      error instanceof Error ? error.message : String(error),
-    );
+    logger.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
 
@@ -47,9 +45,7 @@ export async function analyzeCommand(url: string): Promise<void> {
     }
   } catch (error) {
     spinner.fail('Analysis failed');
-    logger.error(
-      error instanceof Error ? error.message : String(error),
-    );
+    logger.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
 }
@@ -151,7 +147,8 @@ function displayPostgresAnalysis(analysis: PgAnalysisResult): void {
       if (col.isPrimaryKey) extra += chalk.yellow(' PK');
       if (col.isUnique && !col.isPrimaryKey) extra += chalk.blue(' UNIQUE');
       if (!col.isNullable) extra += chalk.gray(' NOT NULL');
-      if (col.columnDefault) extra += chalk.gray(` DEFAULT ${col.columnDefault}`);
+      if (col.columnDefault)
+        extra += chalk.gray(` DEFAULT ${col.columnDefault}`);
 
       const fk = table.foreignKeys.find((f) => f.columnName === col.name);
       if (fk) {

@@ -39,9 +39,9 @@ export async function statusCommand(): Promise<void> {
     schedules.forEach((schedule: any, index: number) => {
       const name = (schedule.name || 'Unnamed').padEnd(maxNameLength);
       const cron = schedule.cron.padEnd(maxCronLength);
-      const status = (schedule.enabled !== false ? '✓ Active' : '✗ Paused').padEnd(
-        8,
-      );
+      const status = (
+        schedule.enabled !== false ? '✓ Active' : '✗ Paused'
+      ).padEnd(8);
       const num = String(index + 1).padStart(3);
 
       logger.log(`│ ${num} │ ${name} │ ${cron} │ ${status} │`);
@@ -50,12 +50,18 @@ export async function statusCommand(): Promise<void> {
     logger.log(footer);
     logger.log('');
 
-    const enabledCount = schedules.filter((s: any) => s.enabled !== false).length;
+    const enabledCount = schedules.filter(
+      (s: any) => s.enabled !== false,
+    ).length;
     const disabledCount = schedules.length - enabledCount;
 
-    logger.info(`Total: ${schedules.length} schedule(s) - ${enabledCount} active, ${disabledCount} paused\n`);
+    logger.info(
+      `Total: ${schedules.length} schedule(s) - ${enabledCount} active, ${disabledCount} paused\n`,
+    );
 
-    logger.info('💡 Schedules execute only when DBDock is integrated into your NestJS app');
+    logger.info(
+      '💡 Schedules execute only when DBDock is integrated into your NestJS app',
+    );
     logger.info('   See: https://dbdock.mintlify.app/programmatic-usage\n');
   } catch (error) {
     logger.error(error instanceof Error ? error.message : String(error));

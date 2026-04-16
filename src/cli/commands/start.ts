@@ -36,7 +36,9 @@ export async function startCommand(options: StartOptions = {}): Promise<void> {
       ]);
 
       if (!shouldContinue) {
-        logger.info('Cancelled. Create schedules first with "npx dbdock schedule"');
+        logger.info(
+          'Cancelled. Create schedules first with "npx dbdock schedule"',
+        );
         return;
       }
     }
@@ -122,7 +124,9 @@ async function startWithPM2(): Promise<void> {
 
     if (installPM2) {
       logger.info('Installing PM2...');
-      const install = spawn('npm', ['install', '-g', 'pm2'], { stdio: 'inherit' });
+      const install = spawn('npm', ['install', '-g', 'pm2'], {
+        stdio: 'inherit',
+      });
 
       await new Promise<void>((resolve, reject) => {
         install.on('close', (code) => {
@@ -156,8 +160,7 @@ async function startWithPM2(): Promise<void> {
 
     const processes = JSON.parse(output);
     existingProcess = processes.find((p: any) => p.name === 'dbdock');
-  } catch (error) {
-  }
+  } catch (error) {}
 
   if (existingProcess) {
     logger.warn('DBDock service is already running with PM2');
@@ -170,7 +173,10 @@ async function startWithPM2(): Promise<void> {
         name: 'action',
         message: 'What would you like to do?',
         choices: [
-          { name: '🔄 Restart service (apply config changes)', value: 'restart' },
+          {
+            name: '🔄 Restart service (apply config changes)',
+            value: 'restart',
+          },
           { name: '⏹️  Stop service', value: 'stop' },
           { name: '❌ Cancel', value: 'cancel' },
         ],
@@ -280,18 +286,14 @@ async function startAsBackgroundProcess(): Promise<void> {
 
   logger.info('Starting DBDock as background process...\n');
 
-  const child = spawn(
-    process.execPath,
-    [process.argv[1], 'start'],
-    {
-      detached: true,
-      stdio: 'ignore',
-      env: {
-        ...process.env,
-        DBDOCK_DAEMON: 'true',
-      },
-    }
-  );
+  const child = spawn(process.execPath, [process.argv[1], 'start'], {
+    detached: true,
+    stdio: 'ignore',
+    env: {
+      ...process.env,
+      DBDOCK_DAEMON: 'true',
+    },
+  });
 
   child.unref();
 

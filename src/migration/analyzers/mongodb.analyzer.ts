@@ -13,7 +13,9 @@ const MAX_SAMPLE_VALUES = 5;
 export function parseMongoUrl(urlString: string): ParsedDatabaseUrl {
   const url = new URL(urlString);
   if (url.protocol !== 'mongodb:' && url.protocol !== 'mongodb+srv:') {
-    throw new Error(`Invalid protocol "${url.protocol}". Expected "mongodb://" or "mongodb+srv://"`);
+    throw new Error(
+      `Invalid protocol "${url.protocol}". Expected "mongodb://" or "mongodb+srv://"`,
+    );
   }
   const database = url.pathname.replace(/^\//, '') || 'test';
   return {
@@ -76,7 +78,9 @@ async function analyzeCollection(
   if (documentCount <= sampleSize) {
     documents = await collection.find({}).toArray();
   } else {
-    documents = await collection.aggregate([{ $sample: { size: sampleSize } }]).toArray();
+    documents = await collection
+      .aggregate([{ $sample: { size: sampleSize } }])
+      .toArray();
   }
 
   const fieldMap = new Map<string, FieldAccumulator>();
@@ -185,17 +189,24 @@ function analyzeDocument(
 
 function isSpecialBsonType(value: any): boolean {
   if (!value || typeof value !== 'object') return false;
-  return !!(value._bsontype || value instanceof ObjectId || value instanceof Date);
+  return !!(
+    value._bsontype ||
+    value instanceof ObjectId ||
+    value instanceof Date
+  );
 }
 
 function summarizeValue(value: any): any {
   if (value === null || value === undefined) return value;
-  if (typeof value === 'string') return value.length > 50 ? value.slice(0, 50) + '...' : value;
+  if (typeof value === 'string')
+    return value.length > 50 ? value.slice(0, 50) + '...' : value;
   if (typeof value === 'number' || typeof value === 'boolean') return value;
   if (value instanceof Date) return value.toISOString();
-  if (value instanceof ObjectId || value?._bsontype === 'ObjectId') return value.toString();
+  if (value instanceof ObjectId || value?._bsontype === 'ObjectId')
+    return value.toString();
   if (Array.isArray(value)) return `[Array(${value.length})]`;
-  if (typeof value === 'object') return `{Object(${Object.keys(value).length} keys)}`;
+  if (typeof value === 'object')
+    return `{Object(${Object.keys(value).length} keys)}`;
   return String(value);
 }
 
@@ -211,7 +222,12 @@ function buildFieldInfos(
   );
 
   for (const [, acc] of topLevelEntries) {
-    const field = accumulatorToFieldInfo(acc, fieldMap, sampledCount, totalCount);
+    const field = accumulatorToFieldInfo(
+      acc,
+      fieldMap,
+      sampledCount,
+      totalCount,
+    );
     topLevelFields.push(field);
   }
 
@@ -249,9 +265,10 @@ function accumulatorToFieldInfo(
 
   nestedFields.sort((a, b) => b.frequency - a.frequency);
 
-  const possibleReference = acc.isObjectId && acc.name !== '_id'
-    ? guessReferenceFromName(acc.name)
-    : undefined;
+  const possibleReference =
+    acc.isObjectId && acc.name !== '_id'
+      ? guessReferenceFromName(acc.name)
+      : undefined;
 
   return {
     name: acc.name,

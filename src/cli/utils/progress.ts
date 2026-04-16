@@ -119,7 +119,11 @@ export class MultiStepProgress {
 
       for (let i = this.currentStep; i < this.steps.length; i++) {
         if (i === this.currentStep) {
-          console.log(chalk.cyan(`  ⟳ ${this.steps[i]}${message ? ' - ' + message : ''}...`));
+          console.log(
+            chalk.cyan(
+              `  ⟳ ${this.steps[i]}${message ? ' - ' + message : ''}...`,
+            ),
+          );
         } else {
           console.log(chalk.gray(`  ○ ${this.steps[i]}`));
         }

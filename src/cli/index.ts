@@ -18,7 +18,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 
 const packageJson = JSON.parse(
-  readFileSync(join(__dirname, '../../package.json'), 'utf-8')
+  readFileSync(join(__dirname, '../../package.json'), 'utf-8'),
 );
 const version = packageJson.version;
 
@@ -106,11 +106,21 @@ program
 program
   .command('copydb')
   .description('Copy a PostgreSQL database from one URL to another')
-  .argument('<source>', 'Source PostgreSQL URL (postgresql://user:pass@host:port/db)')
-  .argument('<target>', 'Target PostgreSQL URL (postgresql://user:pass@host:port/db)')
+  .argument(
+    '<source>',
+    'Source PostgreSQL URL (postgresql://user:pass@host:port/db)',
+  )
+  .argument(
+    '<target>',
+    'Target PostgreSQL URL (postgresql://user:pass@host:port/db)',
+  )
   .option('--schema-only', 'Copy schema only (no data)')
   .option('--data-only', 'Copy data only (no schema)')
-  .option('--verbose', 'Show detailed pg_dump/pg_restore output')
+  .option('--verbose', 'Show detailed output')
+  .option(
+    '--driver',
+    'Use direct PostgreSQL driver instead of pg_dump (works with serverless/modified Postgres)',
+  )
   .action(copydbCommand);
 
 program
@@ -129,8 +139,16 @@ program
   .option('--since <date>', 'Incremental cutoff date (ISO format)')
   .option('--config <path>', 'Use a saved migration config file')
   .option('--export-config <path>', 'Export migration plan to config file')
-  .option('--batch-size <number>', 'Documents per batch (default: 1000)', parseInt)
-  .option('--max-depth <number>', 'Max nesting depth before jsonb (default: 2)', parseInt)
+  .option(
+    '--batch-size <number>',
+    'Documents per batch (default: 1000)',
+    parseInt,
+  )
+  .option(
+    '--max-depth <number>',
+    'Max nesting depth before jsonb (default: 2)',
+    parseInt,
+  )
   .action(crossMigrateCommand);
 
 program.parse();

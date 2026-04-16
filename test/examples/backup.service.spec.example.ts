@@ -190,7 +190,9 @@ describe('BackupService', () => {
       const result = await service.createBackup();
       const storageKey = result.metadata.storageKey;
 
-      expect(storageKey).toMatch(/^backups\/test_db\/\d{4}-\d{2}-\d{2}\/test-backup-id_\d{2}-\d{2}-\d{2}\.backup$/);
+      expect(storageKey).toMatch(
+        /^backups\/test_db\/\d{4}-\d{2}-\d{2}\/test-backup-id_\d{2}-\d{2}-\d{2}\.backup$/,
+      );
     });
   });
 
@@ -268,8 +270,3 @@ describe('BackupService', () => {
     });
   });
 });
-
-
-
-
-

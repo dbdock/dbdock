@@ -106,7 +106,9 @@ export class S3StorageAdapter implements IStorageAdapter {
       return response.Body as Readable;
     } catch (error) {
       const friendlyMessage = this.getFriendlyError(error);
-      this.logger.error(`Failed to download ${options.key}: ${friendlyMessage}`);
+      this.logger.error(
+        `Failed to download ${options.key}: ${friendlyMessage}`,
+      );
       const cleanError = new Error(friendlyMessage);
       cleanError.name = 'StorageConfigurationError';
       throw cleanError;
@@ -194,7 +196,7 @@ export class S3StorageAdapter implements IStorageAdapter {
       await this.client.send(command);
       return true;
     } catch (error) {
-      if ((error as any).name === 'NotFound') {
+      if (error.name === 'NotFound') {
         return false;
       }
       throw error;
@@ -206,7 +208,11 @@ export class S3StorageAdapter implements IStorageAdapter {
     const code = err?.code;
     const message = err?.message || '';
 
-    if (code === 'EPROTO' || message.includes('SSL') || message.includes('TLS')) {
+    if (
+      code === 'EPROTO' ||
+      message.includes('SSL') ||
+      message.includes('TLS')
+    ) {
       return 'Invalid storage configuration: SSL/TLS handshake failed. Please verify your endpoint URL, access key ID, and secret access key are correct.';
     }
 
