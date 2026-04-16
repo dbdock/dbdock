@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 - Stale `src/cli/commands/backup.ts.bak`
-- Local docs folder (canonical docs live at https://dbdock.mintlify.app)
+- Local docs folder (canonical docs live at https://docs.dbdock.xyz)
 
 ## [1.1.26] - 2026-04
 

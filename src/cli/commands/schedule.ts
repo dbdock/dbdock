@@ -174,7 +174,7 @@ async function addSchedule(config: CLIConfig): Promise<void> {
   logger.info(
     '💡 To execute schedules, integrate DBDock into your NestJS application',
   );
-  logger.info('   See: https://dbdock.mintlify.app');
+  logger.info('   See: https://docs.dbdock.xyz');
 }
 
 async function removeSchedule(config: CLIConfig): Promise<void> {

@@ -6,7 +6,7 @@ Thanks for your interest in contributing. DBDock is an open-source database back
 
 - **Report bugs** — open an issue with reproduction steps
 - **Suggest features** — start a [discussion](https://github.com/dbdock/dbdock/discussions) first for large changes
-- **Improve docs** — the canonical docs live at https://dbdock.mintlify.app
+- **Improve docs** — the canonical docs live at https://docs.dbdock.xyz (source: [dbdock/dbdock-docs](https://github.com/dbdock/dbdock-docs))
 - **Fix bugs or add features** — see "Development" below
 
 ## Development

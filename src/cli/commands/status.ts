@@ -66,7 +66,7 @@ function runStatusCommand(): void {
     logger.info(
       '💡 Schedules execute only when DBDock is integrated into your NestJS app',
     );
-    logger.info('   See: https://dbdock.mintlify.app/programmatic-usage\n');
+    logger.info('   See: https://docs.dbdock.xyz/sdk/overview\n');
   } catch (error) {
     logger.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
