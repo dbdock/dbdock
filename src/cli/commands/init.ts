@@ -15,6 +15,7 @@ import {
   mkdirSync,
 } from 'fs';
 import { join } from 'path';
+import { getEngine } from '../../engines';
 
 const ENV_FILE = '.env';
 
@@ -84,7 +85,16 @@ export async function initCommand(): Promise<void> {
       type: 'list',
       name: 'dbType',
       message: 'Select database type:',
-      choices: [{ name: 'PostgreSQL', value: 'postgres' }],
+      choices: [
+        { name: 'PostgreSQL', value: 'postgres' },
+        { name: 'MySQL', value: 'mysql' },
+        { name: 'MariaDB', value: 'mariadb' },
+        { name: 'SQL Server', value: 'mssql' },
+        { name: 'Redis', value: 'redis' },
+        { name: 'CockroachDB (PostgreSQL-compatible)', value: 'cockroachdb' },
+        { name: 'Amazon Redshift (PostgreSQL-compatible)', value: 'redshift' },
+        { name: 'TimescaleDB (PostgreSQL-compatible)', value: 'timescaledb' },
+      ],
       default: 'postgres',
     },
     {
@@ -97,13 +107,13 @@ export async function initCommand(): Promise<void> {
       type: 'number',
       name: 'port',
       message: 'Database port:',
-      default: 5432,
+      default: (ans: { dbType?: string }) => getEngine(ans.dbType).defaultPort,
     },
     {
       type: 'input',
       name: 'username',
       message: 'Database username:',
-      default: 'postgres',
+      default: (ans: { dbType?: string }) => getEngine(ans.dbType).defaultUser,
     },
     {
       type: 'password',

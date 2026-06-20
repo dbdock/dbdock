@@ -1,5 +1,4 @@
 import { CLIConfig } from '../cli/utils/config';
-import { spawn } from 'child_process';
 import { Readable, Transform, PassThrough } from 'stream';
 import { createWriteStream, mkdirSync } from 'fs';
 import { dirname, join } from 'path';
@@ -10,6 +9,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Upload } from '@aws-sdk/lib-storage';
 import { v2 as cloudinary } from 'cloudinary';
 import { formatFileSize } from '../utils/format';
+import { getEngine } from '../engines';
 
 interface BackupResult {
   backupId: string;
@@ -33,14 +33,9 @@ export async function createBackupStandalone(
   const backupId = randomBytes(16).toString('hex');
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 
+  const engine = getEngine(config.database.type);
   const format = config.backup?.format || 'custom';
-  const extensionMap: Record<string, string> = {
-    custom: 'sql',
-    plain: 'sql',
-    directory: 'dir',
-    tar: 'tar',
-  };
-  const extension = extensionMap[format] || 'sql';
+  const extension = engine.fileExtension(format);
   const filename = `backup-${timestamp}-${backupId}.${extension}`;
 
   let storageKey =
@@ -55,42 +50,14 @@ export async function createBackupStandalone(
 
   const dbConfig = config.database;
 
-  const formatMap: Record<string, string> = {
-    custom: 'c',
-    plain: 'p',
-    directory: 'd',
-    tar: 't',
-  };
-
-  const pgDumpArgs = [
-    '-h',
-    dbConfig.host || 'localhost',
-    '-p',
-    String(dbConfig.port || 5432),
-    '-U',
-    dbConfig.user ||
-      dbConfig.username ||
-      process.env.DBDOCK_DB_USER ||
-      'postgres',
-    '-d',
-    dbConfig.database || 'postgres',
-    '-F',
-    formatMap[format] || 'c',
-    '--no-password',
-  ];
-
-  const env = {
-    ...process.env,
-    PGPASSWORD: dbConfig.password || process.env.DBDOCK_DB_PASSWORD,
-  };
-
   if (callbacks?.onStage) {
     callbacks.onStage('Dumping database');
   }
 
-  const pgDumpProcess = spawn('pg_dump', pgDumpArgs, { env });
+  const dump = engine.spawnDump(dbConfig, { format });
+  const pgDumpProcess = dump.process;
 
-  let stream: Readable | Transform = pgDumpProcess.stdout;
+  let stream: Readable | Transform = dump.stdout;
   const streams: (Readable | Transform)[] = [stream];
 
   const pgDumpErrorMessages: string[] = [];
@@ -163,12 +130,16 @@ export async function createBackupStandalone(
         if (pgDumpExitCode !== null && pgDumpExitCode !== 0) {
           reject(
             new Error(
-              formatPgDumpError(pgDumpExitCode, pgDumpErrorMessages, dbConfig),
+              engine.formatDumpError(
+                pgDumpExitCode,
+                pgDumpErrorMessages,
+                dbConfig,
+              ),
             ),
           );
         } else if (pgDumpErrorMessages.length > 0 && totalSize === 0) {
           reject(
-            new Error(formatPgDumpError(1, pgDumpErrorMessages, dbConfig)),
+            new Error(engine.formatDumpError(1, pgDumpErrorMessages, dbConfig)),
           );
         } else {
           resolve();
@@ -178,7 +149,7 @@ export async function createBackupStandalone(
       pgDumpProcess.on('error', (err) => {
         reject(
           new Error(
-            `Failed to execute pg_dump: ${err.message}\n\nPlease ensure PostgreSQL client tools are installed:\n  macOS: brew install postgresql\n  Ubuntu/Debian: sudo apt-get install postgresql-client`,
+            `Failed to start the database dump: ${err.message}\n\n${engine.clientToolHint}`,
           ),
         );
       });
@@ -228,7 +199,7 @@ export async function createBackupStandalone(
           if (pgDumpExitCode !== null && pgDumpExitCode !== 0) {
             reject(
               new Error(
-                formatPgDumpError(
+                engine.formatDumpError(
                   pgDumpExitCode,
                   pgDumpErrorMessages,
                   dbConfig,
@@ -237,7 +208,9 @@ export async function createBackupStandalone(
             );
           } else if (pgDumpErrorMessages.length > 0 && totalSize === 0) {
             reject(
-              new Error(formatPgDumpError(1, pgDumpErrorMessages, dbConfig)),
+              new Error(
+                engine.formatDumpError(1, pgDumpErrorMessages, dbConfig),
+              ),
             );
           } else {
             resolve();
@@ -248,7 +221,7 @@ export async function createBackupStandalone(
       pgDumpProcess.on('error', (err) => {
         reject(
           new Error(
-            `Failed to execute pg_dump: ${err.message}\n\nPlease ensure PostgreSQL client tools are installed:\n  macOS: brew install postgresql\n  Ubuntu/Debian: sudo apt-get install postgresql-client`,
+            `Failed to start the database dump: ${err.message}\n\n${engine.clientToolHint}`,
           ),
         );
       });
@@ -259,7 +232,7 @@ export async function createBackupStandalone(
             if (!uploadCompleted) {
               reject(
                 new Error(
-                  formatPgDumpError(code, pgDumpErrorMessages, dbConfig),
+                  engine.formatDumpError(code, pgDumpErrorMessages, dbConfig),
                 ),
               );
             }
@@ -298,7 +271,7 @@ export async function createBackupStandalone(
           } else if (pgDumpExitCode !== null && pgDumpExitCode !== 0) {
             reject(
               new Error(
-                formatPgDumpError(
+                engine.formatDumpError(
                   pgDumpExitCode,
                   pgDumpErrorMessages,
                   dbConfig,
@@ -307,7 +280,9 @@ export async function createBackupStandalone(
             );
           } else if (pgDumpErrorMessages.length > 0 && totalSize === 0) {
             reject(
-              new Error(formatPgDumpError(1, pgDumpErrorMessages, dbConfig)),
+              new Error(
+                engine.formatDumpError(1, pgDumpErrorMessages, dbConfig),
+              ),
             );
           } else {
             if (result?.public_id) {
@@ -323,7 +298,7 @@ export async function createBackupStandalone(
       pgDumpProcess.on('error', (err) => {
         reject(
           new Error(
-            `Failed to execute pg_dump: ${err.message}\n\nPlease ensure PostgreSQL client tools are installed:\n  macOS: brew install postgresql\n  Ubuntu/Debian: sudo apt-get install postgresql-client`,
+            `Failed to start the database dump: ${err.message}\n\n${engine.clientToolHint}`,
           ),
         );
       });
@@ -334,7 +309,7 @@ export async function createBackupStandalone(
             if (!uploadCompleted) {
               reject(
                 new Error(
-                  formatPgDumpError(code, pgDumpErrorMessages, dbConfig),
+                  engine.formatDumpError(code, pgDumpErrorMessages, dbConfig),
                 ),
               );
             }
@@ -392,108 +367,4 @@ export async function createBackupStandalone(
     duration,
     downloadUrl,
   };
-}
-
-function formatPgDumpError(
-  exitCode: number,
-  errorMessages: string[],
-  dbConfig: CLIConfig['database'],
-): string {
-  const errorMessage = errorMessages.join('\n');
-  const host = dbConfig.host || 'localhost';
-  const port = dbConfig.port || 5432;
-  const username = dbConfig.username || 'postgres';
-  const database = dbConfig.database || 'postgres';
-
-  if (
-    errorMessage.includes('database') &&
-    errorMessage.includes('does not exist')
-  ) {
-    const dbMatch = errorMessage.match(/database "([^"]+)" does not exist/);
-    const dbName = dbMatch ? dbMatch[1] : database;
-    return (
-      `Database "${dbName}" does not exist\n\n` +
-      `Connection details:\n` +
-      `  Host: ${host}\n` +
-      `  Port: ${port}\n` +
-      `  Database: ${dbName}\n\n` +
-      `Please verify:\n` +
-      `  • Database name is correct in dbdock.config.json\n` +
-      `  • Database exists on the server\n` +
-      `  • You can connect: psql -h ${host} -p ${port} -U ${username} -d ${dbName}`
-    );
-  }
-
-  if (
-    errorMessage.includes('could not connect') ||
-    errorMessage.includes('Connection refused') ||
-    errorMessage.includes('ECONNREFUSED')
-  ) {
-    return (
-      `Cannot connect to PostgreSQL server\n\n` +
-      `Connection details:\n` +
-      `  Host: ${host}\n` +
-      `  Port: ${port}\n\n` +
-      `Please verify:\n` +
-      `  • PostgreSQL server is running\n` +
-      `  • Host and port are correct in dbdock.config.json\n` +
-      `  • Network/firewall allows connection\n` +
-      `  • Test connection: psql -h ${host} -p ${port} -U ${username} -d ${database}`
-    );
-  }
-
-  if (
-    errorMessage.includes('authentication failed') ||
-    errorMessage.includes('password authentication failed')
-  ) {
-    return (
-      `Authentication failed for user "${username}"\n\n` +
-      `Connection details:\n` +
-      `  Host: ${host}\n` +
-      `  Port: ${port}\n` +
-      `  Username: ${username}\n` +
-      `  Database: ${database}\n\n` +
-      `Please verify:\n` +
-      `  • Username is correct in dbdock.config.json\n` +
-      `  • Password is correct in dbdock.config.json\n` +
-      `  • User exists and has access to the database\n` +
-      `  • Test connection: psql -h ${host} -p ${port} -U ${username} -d ${database}`
-    );
-  }
-
-  if (errorMessage.includes('permission denied')) {
-    return (
-      `Permission denied for user "${username}"\n\n` +
-      `The user does not have sufficient privileges to perform backup.\n\n` +
-      `Please verify:\n` +
-      `  • User has read permissions on the database\n` +
-      `  • User has necessary privileges for pg_dump\n` +
-      `  • Grant access: GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${username};`
-    );
-  }
-
-  if (errorMessage.includes('no password supplied')) {
-    return (
-      `No password provided for user "${username}"\n\n` +
-      `Please add the database password to dbdock.config.json:\n` +
-      `  "database": {\n` +
-      `    "password": "your-database-password"\n` +
-      `  }`
-    );
-  }
-
-  if (errorMessages.length > 0) {
-    return (
-      `pg_dump failed with exit code ${exitCode}\n\n` +
-      `Error details:\n${errorMessage}\n\n` +
-      `Connection settings:\n` +
-      `  Host: ${host}\n` +
-      `  Port: ${port}\n` +
-      `  Username: ${username}\n` +
-      `  Database: ${database}\n\n` +
-      `Please check your configuration and database connection.`
-    );
-  }
-
-  return `pg_dump failed with exit code ${exitCode}. Please check your database configuration.`;
 }

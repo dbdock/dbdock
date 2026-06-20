@@ -1,6 +1,6 @@
 import inquirer from 'inquirer';
 import ora from 'ora';
-import { loadConfig, CLIConfig } from '../utils/config';
+import { loadConfig } from '../utils/config';
 import { logger } from '../utils/logger';
 import { LocalStorageAdapter } from '../../storage/adapters/local.adapter';
 import { S3StorageAdapter } from '../../storage/adapters/s3.adapter';
@@ -10,7 +10,7 @@ import {
   IStorageAdapter,
   StorageObject,
 } from '../../storage/storage.interface';
-import { spawn } from 'child_process';
+import { getEngine } from '../../engines';
 import { createBrotliDecompress } from 'zlib';
 import { createDecipheriv } from 'crypto';
 import { Readable, Transform } from 'stream';
@@ -50,6 +50,7 @@ export async function restoreCommand(): Promise<void> {
 
   try {
     const config = loadConfig();
+    const engine = getEngine(config.database.type);
     spinner.succeed('Configuration loaded');
 
     let adapter: IStorageAdapter;
@@ -139,6 +140,7 @@ export async function restoreCommand(): Promise<void> {
       }
 
       objects = await adapter.listObjects({ prefix });
+      const engineExtension = `.${engine.fileExtension()}`;
       objects = objects
         .filter((obj) => {
           const key = obj.key.toLowerCase();
@@ -148,6 +150,7 @@ export async function restoreCommand(): Promise<void> {
               key.endsWith('.dump') ||
               key.endsWith('.tar') ||
               key.endsWith('.dir') ||
+              key.endsWith(engineExtension) ||
               config.storage.provider === 'cloudinary')
           );
         })
@@ -230,7 +233,7 @@ export async function restoreCommand(): Promise<void> {
     }
 
     spinner.start('Analyzing current database...');
-    const currentDbStats = await getCurrentDatabaseStats(config);
+    const currentDbStats = await engine.getStats(config.database);
     spinner.succeed('Database analysis complete');
 
     logger.info('\nCurrent Database Statistics:');
@@ -420,13 +423,13 @@ export async function restoreCommand(): Promise<void> {
           type: 'number',
           name: 'port',
           message: 'Target Port:',
-          default: 5432,
+          default: engine.defaultPort,
         },
         {
           type: 'input',
           name: 'username',
           message: 'Target Username:',
-          default: 'postgres',
+          default: engine.defaultUser,
         },
         {
           type: 'password',
@@ -441,7 +444,7 @@ export async function restoreCommand(): Promise<void> {
       ])) as MigrationDetailsAnswer;
 
       targetDbConfig = {
-        type: 'postgres',
+        type: config.database.type,
         ...migrationDetails,
       };
     }
@@ -471,32 +474,6 @@ export async function restoreCommand(): Promise<void> {
     ]);
 
     restoreSteps.start();
-
-    const pgRestoreArgs = [
-      '-h',
-      targetDbConfig.host || 'localhost',
-      '-p',
-      String(targetDbConfig.port || 5432),
-      '-U',
-      targetDbConfig.user ||
-        targetDbConfig.username ||
-        process.env.DBDOCK_DB_USER ||
-        'postgres',
-      '-d',
-      targetDbConfig.database || 'postgres',
-      '-F',
-      'c',
-      '--clean',
-      '--if-exists',
-      '--no-owner',
-      '--no-acl',
-      '--no-password',
-    ];
-
-    const env = {
-      ...process.env,
-      PGPASSWORD: targetDbConfig.password || process.env.DBDOCK_DB_PASSWORD,
-    };
 
     let stream: Readable | Transform;
     let tempFilePath: string | null = null;
@@ -582,31 +559,9 @@ export async function restoreCommand(): Promise<void> {
     } else {
       restoreSteps.nextStep();
     }
-    const pgRestoreProcess = spawn('pg_restore', pgRestoreArgs, { env });
+    const pgRestoreProcess = engine.spawnRestore(targetDbConfig);
 
     stream.pipe(pgRestoreProcess.stdin);
-
-    const ignoredPatterns = [
-      'NOTICE',
-      'WARNING',
-      'transaction_timeout',
-      'errors ignored on restore',
-      'unrecognized configuration parameter',
-      'already exists',
-      'does not exist',
-      'no privileges could be revoked',
-      'no privileges were granted',
-      'role .* does not exist',
-      'extension .* already exists',
-      'schema .* already exists',
-      'procedural language .* already exists',
-    ];
-
-    const shouldIgnoreError = (message: string): boolean => {
-      return ignoredPatterns.some((pattern) =>
-        message.toLowerCase().includes(pattern.toLowerCase()),
-      );
-    };
 
     await new Promise<void>((resolve, reject) => {
       let errorOutput = '';
@@ -619,13 +574,12 @@ export async function restoreCommand(): Promise<void> {
 
         if (code === 0 || (code === 1 && !errorOutput && hasWarnings)) {
           resolve();
-        } else if (code === 1 && errorOutput) {
-          const friendlyError = parsePgRestoreError(errorOutput);
-          reject(new Error(friendlyError));
+        } else if (errorOutput) {
+          reject(new Error(engine.formatRestoreError(errorOutput)));
         } else if (code !== 0) {
           reject(
             new Error(
-              `pg_restore exited with code ${code}${errorOutput ? ': ' + errorOutput : ''}`,
+              `Restore exited with code ${code}${errorOutput ? ': ' + errorOutput : ''}`,
             ),
           );
         }
@@ -634,11 +588,15 @@ export async function restoreCommand(): Promise<void> {
         if (tempFilePath && existsSync(tempFilePath)) {
           unlinkSync(tempFilePath);
         }
-        reject(new Error(`Failed to execute pg_restore: ${err.message}`));
+        reject(
+          new Error(
+            `Failed to start the restore process: ${err.message}\n\n${engine.clientToolHint}`,
+          ),
+        );
       });
       pgRestoreProcess.stderr.on('data', (data: Buffer) => {
         const message = data.toString();
-        if (shouldIgnoreError(message)) {
+        if (engine.shouldIgnoreRestoreMessage(message)) {
           hasWarnings = true;
         } else if (message.trim()) {
           errorOutput += message;
@@ -667,163 +625,6 @@ export async function restoreCommand(): Promise<void> {
     );
     process.exit(1);
   }
-}
-
-interface DatabaseStats {
-  name: string;
-  tables: number;
-  size: string;
-  rows: string;
-}
-
-async function getCurrentDatabaseStats(
-  config: CLIConfig,
-): Promise<DatabaseStats> {
-  const dbConfig = config.database;
-
-  const queries = [
-    `SELECT count(*) as table_count FROM information_schema.tables WHERE table_schema = 'public'`,
-    `SELECT pg_size_pretty(pg_database_size('${dbConfig.database}')) as size`,
-    `SELECT sum(n_live_tup) as total_rows FROM pg_stat_user_tables`,
-  ];
-
-  const psqlArgs = [
-    '-h',
-    dbConfig.host || 'localhost',
-    '-p',
-    String(dbConfig.port || 5432),
-    '-U',
-    dbConfig.user ||
-      dbConfig.username ||
-      process.env.DBDOCK_DB_USER ||
-      'postgres',
-    '-d',
-    dbConfig.database || 'postgres',
-    '-t',
-    '--no-password',
-  ];
-
-  const env = {
-    ...process.env,
-    PGPASSWORD: dbConfig.password || process.env.DBDOCK_DB_PASSWORD,
-  };
-
-  const results = await Promise.all(
-    queries.map(
-      (query) =>
-        new Promise<string>((resolve, reject) => {
-          const psqlProcess = spawn('psql', [...psqlArgs, '-c', query], {
-            env,
-          });
-          let output = '';
-          let errorOutput = '';
-
-          psqlProcess.stdout.on('data', (data: Buffer) => {
-            output += data.toString();
-          });
-
-          psqlProcess.stderr.on('data', (data: Buffer) => {
-            errorOutput += data.toString();
-          });
-
-          psqlProcess.on('close', (code) => {
-            if (code === 0) {
-              resolve(output.trim());
-            } else {
-              reject(
-                new Error(errorOutput || `Query failed with code ${code}`),
-              );
-            }
-          });
-
-          psqlProcess.on('error', reject);
-        }),
-    ),
-  );
-
-  return {
-    name: dbConfig.database || 'postgres',
-    tables: parseInt(results[0]) || 0,
-    size: results[1] || 'Unknown',
-    rows: results[2] ? parseInt(results[2]).toLocaleString() : '0',
-  };
-}
-
-function parsePgRestoreError(errorOutput: string): string {
-  const lowerError = errorOutput.toLowerCase();
-
-  if (lowerError.includes('authentication failed')) {
-    return (
-      'Database authentication failed\n\n' +
-      'Please verify:\n' +
-      '  • Database password is correct in dbdock.config.json\n' +
-      '  • Database user has necessary permissions\n' +
-      '  • Database host and port are accessible'
-    );
-  }
-
-  if (
-    lowerError.includes('connection refused') ||
-    lowerError.includes('could not connect')
-  ) {
-    return (
-      'Failed to connect to database\n\n' +
-      'Please verify:\n' +
-      '  • Database server is running\n' +
-      '  • Host and port are correct in dbdock.config.json\n' +
-      '  • Firewall allows connection to database port\n' +
-      '  • Database accepts connections from your IP'
-    );
-  }
-
-  if (lowerError.includes('permission denied')) {
-    return (
-      'Database permission denied\n\n' +
-      'Please verify:\n' +
-      '  • Database user has CREATE/DROP privileges\n' +
-      '  • User has permission to restore to this database\n' +
-      '  • Try using a superuser account for restore'
-    );
-  }
-
-  if (
-    lowerError.includes('database') &&
-    lowerError.includes('does not exist')
-  ) {
-    return (
-      'Target database does not exist\n\n' +
-      'Please:\n' +
-      '  • Create the database first, or\n' +
-      '  • Update database name in dbdock.config.json'
-    );
-  }
-
-  if (
-    lowerError.includes('disk full') ||
-    lowerError.includes('no space left')
-  ) {
-    return (
-      'Insufficient disk space\n\n' +
-      'Please:\n' +
-      '  • Free up disk space on database server\n' +
-      '  • Check available storage before restoring'
-    );
-  }
-
-  if (
-    lowerError.includes('corrupted') ||
-    lowerError.includes('invalid backup')
-  ) {
-    return (
-      'Backup file appears to be corrupted\n\n' +
-      'Please:\n' +
-      '  • Try a different backup file\n' +
-      '  • Verify backup was created successfully\n' +
-      '  • Check encryption key matches if encryption is enabled'
-    );
-  }
-
-  return `Database restore error:\n\n${errorOutput.trim()}\n\nIf you need help, please check the documentation or report this issue.`;
 }
 
 function getTimeAgo(date: Date): string {

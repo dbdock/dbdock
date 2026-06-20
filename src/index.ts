@@ -42,3 +42,14 @@ export { AlertService } from './alerts/alert.service';
 export { AlertModule } from './alerts/alert.module';
 export * from './alerts/alert.types';
 export { DEFAULT_TEMPLATES } from './alerts/alert-templates';
+
+export { createBackupStandalone } from './standalone/backup-standalone';
+export type { BackupProgressCallback } from './standalone/backup-standalone';
+export { restoreBackupStandalone } from './standalone/restore-standalone';
+export type {
+  RestoreProgressCallback,
+  RestoreStandaloneOptions,
+} from './standalone/restore-standalone';
+export { getEngine, SUPPORTED_ENGINE_TYPES } from './engines';
+export type { DatabaseEngine } from './engines';
+export type { CLIConfig } from './cli/utils/config';
