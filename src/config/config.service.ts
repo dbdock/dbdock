@@ -34,6 +34,7 @@ interface LegacyStorageBlock {
   cloudinaryCloudName?: string;
   cloudinaryApiKey?: string;
   cloudinaryApiSecret?: string;
+  deletionSafety?: DBDockConfig['storage']['deletionSafety'];
 }
 
 interface LegacyAlertsBlock {
@@ -264,6 +265,10 @@ export class DBDockConfigService {
         storage.cloudinaryCloudName = src.cloudinary.cloudName;
         storage.cloudinaryApiKey = src.cloudinary.apiKey;
         storage.cloudinaryApiSecret = src.cloudinary.apiSecret;
+      }
+
+      if (src.deletionSafety) {
+        storage.deletionSafety = src.deletionSafety;
       }
 
       transformed.storage = storage;

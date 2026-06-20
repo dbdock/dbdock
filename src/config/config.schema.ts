@@ -36,6 +36,31 @@ export enum StorageProvider {
   LOCAL = 'local',
 }
 
+class DeletionSafetyConfig {
+  @IsBoolean()
+  @IsOptional()
+  enabled?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  recycleBin?: boolean;
+
+  @IsNumber()
+  @Min(1)
+  @IsOptional()
+  trashRetentionDays?: number;
+
+  @IsNumber()
+  @Min(1)
+  @IsOptional()
+  maxDeletesPerWindow?: number;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  allowedPrefixes?: string[];
+}
+
 class StorageConfig {
   @IsEnum(StorageProvider)
   provider: StorageProvider;
@@ -74,6 +99,11 @@ class StorageConfig {
   @IsString()
   @IsOptional()
   cloudinaryApiSecret?: string;
+
+  @ValidateNested()
+  @Type(() => DeletionSafetyConfig)
+  @IsOptional()
+  deletionSafety?: DeletionSafetyConfig;
 }
 
 class EncryptionConfig {

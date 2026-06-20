@@ -10,6 +10,8 @@ import {
   IStorageAdapter,
   StorageObject,
 } from '../../storage/storage.interface';
+import { SafeStorageAdapter } from '../../storage/safe-storage.adapter';
+import { resolveDeletionGuardPolicy } from '../../storage/deletion-guard';
 import { Logger } from '@nestjs/common';
 
 Logger.overrideLogger(false);
@@ -102,6 +104,8 @@ export async function deleteCommand(
         spinner.fail(`Unknown storage provider: ${config.storage.provider}`);
         process.exit(1);
     }
+
+    adapter = new SafeStorageAdapter(adapter, resolveDeletionGuardPolicy());
 
     spinner.start('Loading backups...');
     let objects: StorageObject[];
@@ -276,7 +280,7 @@ export async function deleteCommand(
 
     for (const key of backupsToDelete) {
       try {
-        await adapter.deleteObject({ key });
+        await adapter.deleteObject({ key, reason: 'Manual delete (CLI)' });
         deletedCount++;
       } catch (err) {
         failedCount++;

@@ -25,6 +25,12 @@ export interface StorageObject {
 
 export interface DeleteOptions {
   key: string;
+  reason?: string;
+}
+
+export interface CopyOptions {
+  sourceKey: string;
+  destinationKey: string;
 }
 
 export interface PresignedUrlOptions {
@@ -47,4 +53,6 @@ export interface IStorageAdapter {
   generatePresignedUrl(options: PresignedUrlOptions): Promise<string>;
 
   objectExists(key: string): Promise<boolean>;
+
+  copyObject?(options: CopyOptions): Promise<void>;
 }

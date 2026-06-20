@@ -1,7 +1,7 @@
 import ora from 'ora';
 import { loadConfig, CLIConfig } from '../utils/config';
 import { logger } from '../utils/logger';
-import { spawn } from 'child_process';
+import { getEngine } from '../../engines';
 import { existsSync } from 'fs';
 import { Logger } from '@nestjs/common';
 import { S3StorageAdapter } from '../../storage/adapters/s3.adapter';
@@ -51,57 +51,7 @@ async function testDatabaseConnection(config: CLIConfig): Promise<void> {
     return;
   }
 
-  const psqlArgs = [
-    '-h',
-    dbConfig.host || 'localhost',
-    '-p',
-    String(dbConfig.port || 5432),
-    '-U',
-    dbConfig.user ||
-      dbConfig.username ||
-      process.env.DBDOCK_DB_USER ||
-      'postgres',
-    '-d',
-    dbConfig.database || 'postgres',
-    '-c',
-    'SELECT 1',
-    '--no-password',
-  ];
-
-  const env = {
-    ...process.env,
-    PGPASSWORD: dbConfig.password || process.env.DBDOCK_DB_PASSWORD,
-  };
-
-  return new Promise<void>((resolve, reject) => {
-    const psqlProcess = spawn('psql', psqlArgs, { env });
-
-    let hasError = false;
-
-    psqlProcess.stderr.on('data', (data: Buffer) => {
-      const message = data.toString();
-      if (!message.includes('NOTICE')) {
-        hasError = true;
-        reject(new Error(`Database connection failed: ${message}`));
-      }
-    });
-
-    psqlProcess.on('close', (code) => {
-      if (!hasError) {
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(
-            new Error(`Database connection failed with exit code ${code}`),
-          );
-        }
-      }
-    });
-
-    psqlProcess.on('error', (error) => {
-      reject(new Error(`Failed to execute psql: ${error.message}`));
-    });
-  });
+  await getEngine(dbConfig.type).testConnection(dbConfig);
 }
 
 async function testStorageConfiguration(config: CLIConfig): Promise<void> {

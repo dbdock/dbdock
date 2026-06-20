@@ -268,9 +268,11 @@ export class WalArchiverService implements OnModuleInit {
 
     for (const walFile of walFiles) {
       if (new Date(walFile.archiveTime) < cutoffDate) {
-        await storageAdapter.deleteObject({ key: walFile.storageKey });
+        const reason = 'WAL retention cleanup';
+        await storageAdapter.deleteObject({ key: walFile.storageKey, reason });
         await storageAdapter.deleteObject({
           key: `${walFile.storageKey}.metadata.json`,
+          reason,
         });
         deletedCount++;
         this.logger.log(`Deleted old WAL file: ${walFile.fileName}`);

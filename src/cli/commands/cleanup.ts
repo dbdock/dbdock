@@ -6,6 +6,8 @@ import { LocalStorageAdapter } from '../../storage/adapters/local.adapter';
 import { S3StorageAdapter } from '../../storage/adapters/s3.adapter';
 import { CloudinaryStorageAdapter } from '../../storage/adapters/cloudinary.adapter';
 import { IStorageAdapter } from '../../storage/storage.interface';
+import { SafeStorageAdapter } from '../../storage/safe-storage.adapter';
+import { resolveDeletionGuardPolicy } from '../../storage/deletion-guard';
 import { Logger } from '@nestjs/common';
 import {
   applyRetention,
@@ -112,6 +114,8 @@ export async function cleanupCommand(
         spinner.fail(`Unknown storage provider: ${config.storage.provider}`);
         process.exit(1);
     }
+
+    adapter = new SafeStorageAdapter(adapter, resolveDeletionGuardPolicy());
 
     spinner.succeed('Connected to storage');
 

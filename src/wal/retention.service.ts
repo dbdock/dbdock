@@ -70,6 +70,17 @@ export class RetentionService {
       result.errors.push(`WAL cleanup: ${msg}`);
     }
 
+    try {
+      const purged = await this.storageService.purgeTrash();
+      if (purged > 0) {
+        this.logger.log(`Purged ${purged} expired trashed object(s)`);
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Error purging trash: ${msg}`);
+      result.errors.push(`Trash purge: ${msg}`);
+    }
+
     this.logger.log(
       `Retention policy complete: ${result.backupsDeleted} backups, ${result.walFilesDeleted} WAL files deleted`,
     );
@@ -102,9 +113,11 @@ export class RetentionService {
         const backup = completedBackups.find((b) => b.id === backupInfo.id);
         if (!backup) continue;
 
-        await storageAdapter.deleteObject({ key: backup.storageKey });
+        const reason = `Retention: ${backupInfo.reason ?? 'expired'}`;
+        await storageAdapter.deleteObject({ key: backup.storageKey, reason });
         await storageAdapter.deleteObject({
           key: `${backup.storageKey}.metadata.json`,
+          reason,
         });
 
         deletedCount++;

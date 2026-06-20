@@ -118,7 +118,12 @@ export async function applyRetention(
 
     for (const backup of toDelete) {
       try {
-        await adapter.deleteObject({ key: backup.key });
+        await adapter.deleteObject({
+          key: backup.key,
+          reason: backup.reason
+            ? `CLI retention: ${backup.reason}`
+            : 'CLI retention cleanup',
+        });
         stats.deletedBackups++;
         stats.spaceReclaimed += backup.size;
       } catch (err) {

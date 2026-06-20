@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Storage deletion guard: every object delete now passes structural validation (no empty, traversal, wildcard, leading-slash, or folder-style keys) plus an allow-list of protected prefixes (`backups/`, `wal/`, `dbdock_backups/`, `backup-`), so retention and cleanup can never delete an object outside DBDock's own namespace
+- Deletion circuit breaker: a runaway loop cannot delete more than `maxDeletesPerWindow` objects within a rolling window (default 1000/60s)
+- Recycle bin: deletes are soft by default — objects are moved to a `.trash/<timestamp>/` prefix (server-side copy on S3/R2) and hard-purged only after `trashRetentionDays` (default 14), recoverable via `StorageService.restoreFromTrash`
+- Audit trail: every delete emits a `[storage-audit]` log line with key, reason, and soft/hard outcome
+- Guard applies to all providers, the managed bucket, and users' own buckets; tunable via `storage.deletionSafety`
+
 ### Added
 - Open-source release preparation: `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`
 - GitHub Actions CI workflow (lint, build, test)

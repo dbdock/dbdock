@@ -6,11 +6,14 @@ import { S3StorageAdapter } from './adapters/s3.adapter';
 import { R2StorageAdapter } from './adapters/r2.adapter';
 import { CloudinaryStorageAdapter } from './adapters/cloudinary.adapter';
 import { StorageProvider } from '../config/config.schema';
+import { SafeStorageAdapter } from './safe-storage.adapter';
+import { resolveDeletionGuardPolicy } from './deletion-guard';
 
 @Injectable()
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);
   private adapter: IStorageAdapter;
+  private safeAdapter: SafeStorageAdapter;
 
   constructor(private configService: DBDockConfigService) {
     this.initializeAdapter();
@@ -100,9 +103,24 @@ export class StorageService {
           `Unknown storage provider: ${String(storageConfig.provider)}`,
         );
     }
+
+    const policy = resolveDeletionGuardPolicy(storageConfig.deletionSafety);
+    this.safeAdapter = new SafeStorageAdapter(this.adapter, policy);
+    this.adapter = this.safeAdapter;
+    this.logger.log(
+      `Deletion guard active (recycleBin=${policy.recycleBin}, trashRetentionDays=${policy.trashRetentionDays})`,
+    );
   }
 
   getAdapter(): IStorageAdapter {
     return this.adapter;
+  }
+
+  async restoreFromTrash(trashKey: string): Promise<string> {
+    return this.safeAdapter.restoreFromTrash(trashKey);
+  }
+
+  async purgeTrash(olderThanDays?: number): Promise<number> {
+    return this.safeAdapter.purgeTrash(olderThanDays);
   }
 }

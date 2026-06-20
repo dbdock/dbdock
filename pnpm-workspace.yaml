@@ -1,0 +1,4 @@
+allowBuilds:
+  '@mongodb-js/zstd': set this to true or false
+  '@nestjs/core': set this to true or false
+  unrs-resolver: set this to true or false

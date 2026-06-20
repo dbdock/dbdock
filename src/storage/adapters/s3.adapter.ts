@@ -3,6 +3,7 @@ import {
   S3Client,
   GetObjectCommand,
   DeleteObjectCommand,
+  CopyObjectCommand,
   ListObjectsV2Command,
   HeadObjectCommand,
 } from '@aws-sdk/client-s3';
@@ -15,6 +16,7 @@ import {
   ListOptions,
   StorageObject,
   DeleteOptions,
+  CopyOptions,
   PresignedUrlOptions,
 } from '../storage.interface';
 import { Readable } from 'stream';
@@ -157,6 +159,30 @@ export class S3StorageAdapter implements IStorageAdapter {
     } catch (error) {
       const friendlyMessage = this.getFriendlyError(error);
       this.logger.error(`Failed to delete ${options.key}: ${friendlyMessage}`);
+      const cleanError = new Error(friendlyMessage);
+      cleanError.name = 'StorageConfigurationError';
+      throw cleanError;
+    }
+  }
+
+  async copyObject(options: CopyOptions): Promise<void> {
+    try {
+      const command = new CopyObjectCommand({
+        Bucket: this.bucket,
+        CopySource: encodeURI(`${this.bucket}/${options.sourceKey}`),
+        Key: options.destinationKey,
+      });
+
+      await this.client.send(command);
+
+      this.logger.log(
+        `Copied ${options.sourceKey} to ${options.destinationKey}`,
+      );
+    } catch (error) {
+      const friendlyMessage = this.getFriendlyError(error);
+      this.logger.error(
+        `Failed to copy ${options.sourceKey}: ${friendlyMessage}`,
+      );
       const cleanError = new Error(friendlyMessage);
       cleanError.name = 'StorageConfigurationError';
       throw cleanError;
