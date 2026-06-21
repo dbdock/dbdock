@@ -6,6 +6,7 @@ import {
   DbConnection,
   DumpHandle,
 } from './engine.types';
+import { EngineErrorContext, ErrorPattern, explainError } from './error-format';
 
 const DUMP_BINARY = 'mysqldump';
 const CLIENT_BINARY = 'mysql';
@@ -26,6 +27,27 @@ function buildEnv(conn: DbConnection): NodeJS.ProcessEnv {
   return password
     ? { ...process.env, MYSQL_PWD: password }
     : { ...process.env };
+}
+
+// MySQL/MariaDB client error vocabulary, most-specific first.
+const ERROR_PATTERNS: ErrorPattern[] = [
+  { category: 'auth', pattern: /access denied/i },
+  { category: 'badDb', pattern: /unknown database/i },
+  {
+    category: 'refused',
+    pattern: /can't connect|connection refused|econnrefused/i,
+  },
+];
+
+// `conn` is omitted for restore errors, which carry no connection context.
+function errorContext(conn?: DbConnection): EngineErrorContext {
+  return {
+    serverLabel: 'MySQL/MariaDB server',
+    host: conn ? conn.host || 'localhost' : '',
+    port: conn ? String(conn.port || DEFAULT_PORT) : '',
+    username: conn ? resolveUser(conn) : '',
+    database: conn ? conn.database || '' : '',
+  };
 }
 
 function connectionArgs(conn: DbConnection, defaultPort: number): string[] {
@@ -120,13 +142,22 @@ export const mysqlEngine: DatabaseEngine = {
         }
       });
       proc.on('close', (code) => {
-        if (code === 0) resolve();
-        else
-          reject(
-            new Error(
-              `Database connection failed: ${errorOutput || `exit code ${code}`}`,
-            ),
-          );
+        if (code === 0) {
+          resolve();
+          return;
+        }
+        reject(
+          new Error(
+            explainError({
+              raw: errorOutput,
+              patterns: ERROR_PATTERNS,
+              ctx: errorContext(conn),
+              tool: 'mysql',
+              exitCode: code ?? undefined,
+              mode: 'connect',
+            }),
+          ),
+        );
       });
       proc.on('error', (err) => {
         reject(
@@ -171,82 +202,24 @@ export const mysqlEngine: DatabaseEngine = {
   },
 
   formatDumpError(exitCode, errorMessages, conn): string {
-    const errorMessage = errorMessages.join('\n');
-    const lower = errorMessage.toLowerCase();
-    const host = conn.host || 'localhost';
-    const port = conn.port || DEFAULT_PORT;
-    const username = resolveUser(conn);
-    const database = conn.database || '';
-
-    if (lower.includes('access denied')) {
-      return (
-        `Authentication failed for user "${username}"\n\n` +
-        `Connection details:\n  Host: ${host}\n  Port: ${port}\n  Username: ${username}\n  Database: ${database}\n\n` +
-        `Please verify:\n` +
-        `  • Username and password are correct in dbdock.config.json\n` +
-        `  • User has access to the database from this host`
-      );
-    }
-    if (lower.includes('unknown database')) {
-      return (
-        `Database "${database}" does not exist\n\n` +
-        `Please verify:\n` +
-        `  • Database name is correct in dbdock.config.json\n` +
-        `  • Database exists on the server`
-      );
-    }
-    if (
-      lower.includes("can't connect") ||
-      lower.includes('connection refused') ||
-      lower.includes('econnrefused')
-    ) {
-      return (
-        `Cannot connect to MySQL/MariaDB server\n\n` +
-        `Connection details:\n  Host: ${host}\n  Port: ${port}\n\n` +
-        `Please verify:\n` +
-        `  • The server is running\n` +
-        `  • Host and port are correct in dbdock.config.json\n` +
-        `  • Network/firewall allows connection`
-      );
-    }
-
-    if (errorMessages.length > 0) {
-      return (
-        `mysqldump failed with exit code ${exitCode}\n\n` +
-        `Error details:\n${errorMessage}\n\n` +
-        `Connection settings:\n  Host: ${host}\n  Port: ${port}\n  Username: ${username}\n  Database: ${database}`
-      );
-    }
-
-    return `mysqldump failed with exit code ${exitCode}. Please check your database configuration.`;
+    return explainError({
+      raw: errorMessages.join('\n'),
+      patterns: ERROR_PATTERNS,
+      ctx: errorContext(conn),
+      tool: 'mysqldump',
+      exitCode,
+      mode: 'dump',
+    });
   },
 
   formatRestoreError(errorOutput): string {
-    const lower = errorOutput.toLowerCase();
-
-    if (lower.includes('access denied')) {
-      return (
-        'Database authentication failed\n\n' +
-        'Please verify:\n  • Database username and password are correct\n  • The user has privileges on the target database'
-      );
-    }
-    if (
-      lower.includes("can't connect") ||
-      lower.includes('connection refused')
-    ) {
-      return (
-        'Failed to connect to database\n\n' +
-        'Please verify:\n  • The server is running\n  • Host and port are correct\n  • Firewall allows connection to the database port'
-      );
-    }
-    if (lower.includes('unknown database')) {
-      return (
-        'Target database does not exist\n\n' +
-        'Please:\n  • Create the database first, or\n  • Update the database name in dbdock.config.json'
-      );
-    }
-
-    return `Database restore error:\n\n${errorOutput.trim()}`;
+    return explainError({
+      raw: errorOutput,
+      patterns: ERROR_PATTERNS,
+      ctx: errorContext(),
+      tool: 'Database restore',
+      mode: 'restore',
+    });
   },
 
   shouldIgnoreRestoreMessage(message): boolean {

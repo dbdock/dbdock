@@ -7,6 +7,7 @@ import {
   DumpHandle,
   DumpSpawnOptions,
 } from './engine.types';
+import { EngineErrorContext, ErrorPattern, explainError } from './error-format';
 
 const DEFAULT_PORT = 5432;
 const CLIENT_TOOL_HINT =
@@ -39,6 +40,33 @@ function buildEnv(conn: DbConnection): NodeJS.ProcessEnv {
   return password
     ? { ...process.env, PGPASSWORD: password }
     : { ...process.env };
+}
+
+// Postgres/psql error vocabulary, most-specific first.
+const ERROR_PATTERNS: ErrorPattern[] = [
+  {
+    category: 'auth',
+    pattern:
+      /authentication failed|credentials are incorrect|password.*incorrect|failed to identify your database/i,
+  },
+  { category: 'badDb', pattern: /database .*does not exist/i },
+  { category: 'permission', pattern: /permission denied/i },
+  {
+    category: 'refused',
+    pattern: /could not connect|connection refused|econnrefused/i,
+  },
+  { category: 'corrupt', pattern: /corrupt|invalid backup/i },
+];
+
+// `conn` is omitted for restore errors, which carry no connection context.
+function errorContext(conn?: DbConnection): EngineErrorContext {
+  return {
+    serverLabel: 'PostgreSQL server',
+    host: conn ? conn.host || 'localhost' : '',
+    port: conn ? String(conn.port || DEFAULT_PORT) : '',
+    username: conn ? resolveUser(conn) : '',
+    database: conn ? conn.database || 'postgres' : '',
+  };
 }
 
 const RESTORE_IGNORE_PATTERNS = [
@@ -124,19 +152,30 @@ export const postgresEngine: DatabaseEngine = {
     ];
     return new Promise<void>((resolve, reject) => {
       const proc = spawn('psql', args, { env: buildEnv(conn) });
-      let hasError = false;
+      let errorOutput = '';
       proc.stderr.on('data', (data: Buffer) => {
         const message = data.toString();
         if (!message.includes('NOTICE')) {
-          hasError = true;
-          reject(new Error(`Database connection failed: ${message}`));
+          errorOutput += message;
         }
       });
       proc.on('close', (code) => {
-        if (hasError) return;
-        if (code === 0) resolve();
-        else
-          reject(new Error(`Database connection failed (exit code ${code})`));
+        if (code === 0) {
+          resolve();
+          return;
+        }
+        reject(
+          new Error(
+            explainError({
+              raw: errorOutput,
+              patterns: ERROR_PATTERNS,
+              ctx: errorContext(conn),
+              tool: 'psql',
+              exitCode: code ?? undefined,
+              mode: 'connect',
+            }),
+          ),
+        );
       });
       proc.on('error', (err) => {
         reject(
@@ -201,122 +240,24 @@ export const postgresEngine: DatabaseEngine = {
   },
 
   formatDumpError(exitCode, errorMessages, conn): string {
-    const errorMessage = errorMessages.join('\n');
-    const host = conn.host || 'localhost';
-    const port = conn.port || DEFAULT_PORT;
-    const username = resolveUser(conn);
-    const database = conn.database || 'postgres';
-
-    if (
-      errorMessage.includes('database') &&
-      errorMessage.includes('does not exist')
-    ) {
-      const dbMatch = errorMessage.match(/database "([^"]+)" does not exist/);
-      const dbName = dbMatch ? dbMatch[1] : database;
-      return (
-        `Database "${dbName}" does not exist\n\n` +
-        `Connection details:\n  Host: ${host}\n  Port: ${port}\n  Database: ${dbName}\n\n` +
-        `Please verify:\n` +
-        `  • Database name is correct in dbdock.config.json\n` +
-        `  • Database exists on the server\n` +
-        `  • You can connect: psql -h ${host} -p ${port} -U ${username} -d ${dbName}`
-      );
-    }
-
-    if (
-      errorMessage.includes('could not connect') ||
-      errorMessage.includes('Connection refused') ||
-      errorMessage.includes('ECONNREFUSED')
-    ) {
-      return (
-        `Cannot connect to PostgreSQL server\n\n` +
-        `Connection details:\n  Host: ${host}\n  Port: ${port}\n\n` +
-        `Please verify:\n` +
-        `  • PostgreSQL server is running\n` +
-        `  • Host and port are correct in dbdock.config.json\n` +
-        `  • Network/firewall allows connection\n` +
-        `  • Test connection: psql -h ${host} -p ${port} -U ${username} -d ${database}`
-      );
-    }
-
-    if (
-      errorMessage.includes('authentication failed') ||
-      errorMessage.includes('password authentication failed')
-    ) {
-      return (
-        `Authentication failed for user "${username}"\n\n` +
-        `Connection details:\n  Host: ${host}\n  Port: ${port}\n  Username: ${username}\n  Database: ${database}\n\n` +
-        `Please verify:\n` +
-        `  • Username and password are correct in dbdock.config.json\n` +
-        `  • User exists and has access to the database`
-      );
-    }
-
-    if (errorMessage.includes('permission denied')) {
-      return (
-        `Permission denied for user "${username}"\n\n` +
-        `The user does not have sufficient privileges to perform backup.\n\n` +
-        `Please verify:\n` +
-        `  • User has read permissions on the database\n` +
-        `  • Grant access: GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${username};`
-      );
-    }
-
-    if (errorMessages.length > 0) {
-      return (
-        `pg_dump failed with exit code ${exitCode}\n\n` +
-        `Error details:\n${errorMessage}\n\n` +
-        `Connection settings:\n  Host: ${host}\n  Port: ${port}\n  Username: ${username}\n  Database: ${database}`
-      );
-    }
-
-    return `pg_dump failed with exit code ${exitCode}. Please check your database configuration.`;
+    return explainError({
+      raw: errorMessages.join('\n'),
+      patterns: ERROR_PATTERNS,
+      ctx: errorContext(conn),
+      tool: 'pg_dump',
+      exitCode,
+      mode: 'dump',
+    });
   },
 
   formatRestoreError(errorOutput): string {
-    const lowerError = errorOutput.toLowerCase();
-
-    if (lowerError.includes('authentication failed')) {
-      return (
-        'Database authentication failed\n\n' +
-        'Please verify:\n  • Database password is correct\n  • Database user has necessary permissions\n  • Database host and port are accessible'
-      );
-    }
-    if (
-      lowerError.includes('connection refused') ||
-      lowerError.includes('could not connect')
-    ) {
-      return (
-        'Failed to connect to database\n\n' +
-        'Please verify:\n  • Database server is running\n  • Host and port are correct\n  • Firewall allows connection to the database port'
-      );
-    }
-    if (lowerError.includes('permission denied')) {
-      return (
-        'Database permission denied\n\n' +
-        'Please verify:\n  • Database user has CREATE/DROP privileges\n  • Try using a superuser account for restore'
-      );
-    }
-    if (
-      lowerError.includes('database') &&
-      lowerError.includes('does not exist')
-    ) {
-      return (
-        'Target database does not exist\n\n' +
-        'Please:\n  • Create the database first, or\n  • Update database name in dbdock.config.json'
-      );
-    }
-    if (
-      lowerError.includes('corrupted') ||
-      lowerError.includes('invalid backup')
-    ) {
-      return (
-        'Backup file appears to be corrupted\n\n' +
-        'Please:\n  • Try a different backup file\n  • Verify the encryption key matches if encryption is enabled'
-      );
-    }
-
-    return `Database restore error:\n\n${errorOutput.trim()}`;
+    return explainError({
+      raw: errorOutput,
+      patterns: ERROR_PATTERNS,
+      ctx: errorContext(),
+      tool: 'Database restore',
+      mode: 'restore',
+    });
   },
 
   shouldIgnoreRestoreMessage(message): boolean {
