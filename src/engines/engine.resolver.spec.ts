@@ -60,6 +60,13 @@ describe('engine metadata', () => {
     expect(redisEngine.defaultPort).toBe(6379);
   });
 
+  it('exposes the correct default users', () => {
+    expect(postgresEngine.defaultUser).toBe('postgres');
+    expect(mysqlEngine.defaultUser).toBe('root');
+    expect(mssqlEngine.defaultUser).toBe('sa');
+    expect(redisEngine.defaultUser).toBe('default');
+  });
+
   it('maps backup formats to file extensions', () => {
     expect(postgresEngine.fileExtension('custom')).toBe('sql');
     expect(postgresEngine.fileExtension('directory')).toBe('dir');

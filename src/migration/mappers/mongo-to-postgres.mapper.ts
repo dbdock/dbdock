@@ -314,7 +314,7 @@ function handleArray(
   );
 
   if (hasObjects && field.nestedFields && field.nestedFields.length > 0) {
-    const childTable = `${singularize(parentTable)}_${toSnakeCase(field.name)}`;
+    const childTable = `${singularize(parentTable)}_${toSnakeCase(field.name)}`; 
     const childFields: FieldMapping[] = [
       {
         sourceField: 'id',

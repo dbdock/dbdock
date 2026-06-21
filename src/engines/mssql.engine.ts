@@ -7,6 +7,7 @@ import {
   DbConnection,
   DumpHandle,
 } from './engine.types';
+import { EngineErrorContext, ErrorPattern, explainError } from './error-format';
 
 const DUMP_BINARY = 'mssql-scripter';
 const CLIENT_BINARY = 'sqlcmd';
@@ -26,6 +27,27 @@ function resolvePassword(conn: DbConnection): string | undefined {
 
 function serverArg(conn: DbConnection): string {
   return `${conn.host || 'localhost'},${conn.port || DEFAULT_PORT}`;
+}
+
+// SQL Server / sqlcmd error vocabulary, most-specific first.
+const ERROR_PATTERNS: ErrorPattern[] = [
+  { category: 'auth', pattern: /login failed/i },
+  { category: 'badDb', pattern: /cannot open database|does not exist/i },
+  {
+    category: 'refused',
+    pattern: /could not open a connection|network-related|econnrefused/i,
+  },
+];
+
+// `conn` is omitted for restore errors, which carry no connection context.
+function errorContext(conn?: DbConnection): EngineErrorContext {
+  return {
+    serverLabel: 'SQL Server',
+    host: conn ? conn.host || 'localhost' : '',
+    port: conn ? String(conn.port || DEFAULT_PORT) : '',
+    username: conn ? resolveUser(conn) : '',
+    database: conn ? conn.database || 'master' : '',
+  };
 }
 
 function stripLeadingBom(): Transform {
@@ -144,13 +166,22 @@ export const mssqlEngine: DatabaseEngine = {
         errorOutput += data.toString();
       });
       proc.on('close', (code) => {
-        if (code === 0) resolve();
-        else
-          reject(
-            new Error(
-              `Database connection failed: ${errorOutput || `exit code ${code}`}`,
-            ),
-          );
+        if (code === 0) {
+          resolve();
+          return;
+        }
+        reject(
+          new Error(
+            explainError({
+              raw: errorOutput,
+              patterns: ERROR_PATTERNS,
+              ctx: errorContext(conn),
+              tool: 'sqlcmd',
+              exitCode: code ?? undefined,
+              mode: 'connect',
+            }),
+          ),
+        );
       });
       proc.on('error', (err) => {
         reject(
@@ -188,75 +219,24 @@ export const mssqlEngine: DatabaseEngine = {
   },
 
   formatDumpError(exitCode, errorMessages, conn): string {
-    const errorMessage = errorMessages.join('\n');
-    const lower = errorMessage.toLowerCase();
-    const host = conn.host || 'localhost';
-    const port = conn.port || DEFAULT_PORT;
-    const username = resolveUser(conn);
-    const database = conn.database || 'master';
-
-    if (lower.includes('login failed')) {
-      return (
-        `Authentication failed for user "${username}"\n\n` +
-        `Connection details:\n  Host: ${host}\n  Port: ${port}\n  Username: ${username}\n  Database: ${database}\n\n` +
-        `Please verify:\n  • Username and password are correct in dbdock.config.json\n  • The login has access to the database`
-      );
-    }
-    if (
-      lower.includes('cannot open database') ||
-      lower.includes('does not exist')
-    ) {
-      return (
-        `Database "${database}" cannot be opened\n\n` +
-        `Please verify:\n  • Database name is correct in dbdock.config.json\n  • Database exists on the server`
-      );
-    }
-    if (
-      lower.includes('could not open a connection') ||
-      lower.includes('network-related') ||
-      lower.includes('econnrefused')
-    ) {
-      return (
-        `Cannot connect to SQL Server\n\n` +
-        `Connection details:\n  Host: ${host}\n  Port: ${port}\n\n` +
-        `Please verify:\n  • The server is running\n  • Host and port are correct in dbdock.config.json\n  • Network/firewall allows connection`
-      );
-    }
-    if (errorMessages.length > 0) {
-      return (
-        `mssql-scripter failed with exit code ${exitCode}\n\n` +
-        `Error details:\n${errorMessage}\n\n` +
-        `Connection settings:\n  Host: ${host}\n  Port: ${port}\n  Username: ${username}\n  Database: ${database}`
-      );
-    }
-    return `mssql-scripter failed with exit code ${exitCode}. Please check your database configuration.`;
+    return explainError({
+      raw: errorMessages.join('\n'),
+      patterns: ERROR_PATTERNS,
+      ctx: errorContext(conn),
+      tool: 'mssql-scripter',
+      exitCode,
+      mode: 'dump',
+    });
   },
 
   formatRestoreError(errorOutput): string {
-    const lower = errorOutput.toLowerCase();
-
-    if (lower.includes('login failed')) {
-      return (
-        'Database authentication failed\n\n' +
-        'Please verify:\n  • Database username and password are correct\n  • The login has privileges on the target database'
-      );
-    }
-    if (
-      lower.includes('could not open a connection') ||
-      lower.includes('network-related')
-    ) {
-      return (
-        'Failed to connect to database\n\n' +
-        'Please verify:\n  • The server is running\n  • Host and port are correct\n  • Firewall allows connection to the database port'
-      );
-    }
-    if (lower.includes('cannot open database')) {
-      return (
-        'Target database cannot be opened\n\n' +
-        'Please:\n  • Create the database first, or\n  • Update the database name in dbdock.config.json'
-      );
-    }
-    return `Database restore error:\n\n${errorOutput.trim()}`;
+    return explainError({
+      raw: errorOutput,
+      patterns: ERROR_PATTERNS,
+      ctx: errorContext(),
+      tool: 'Database restore',
+      mode: 'restore',
+    });
   },
 
   shouldIgnoreRestoreMessage(message): boolean {

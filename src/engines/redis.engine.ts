@@ -8,6 +8,7 @@ import {
   DbConnection,
   DumpHandle,
 } from './engine.types';
+import { EngineErrorContext, ErrorPattern, explainError } from './error-format';
 
 const DEFAULT_PORT = 6379;
 const WORKER_PATH = join(__dirname, 'redis-worker.js');
@@ -42,6 +43,31 @@ function buildClient(conn: DbConnection): Redis {
   });
 }
 
+// Redis (ioredis) error vocabulary, most-specific first.
+const ERROR_PATTERNS: ErrorPattern[] = [
+  {
+    category: 'auth',
+    pattern: /wrongpass|noauth|invalid username-password|without any password/i,
+  },
+  { category: 'badDb', pattern: /db index is out of range|invalid db index/i },
+  {
+    category: 'refused',
+    pattern:
+      /econnrefused|connection refused|enotfound|etimedout|connection is closed/i,
+  },
+];
+
+// `conn` is omitted for restore errors, which carry no connection context.
+function errorContext(conn?: DbConnection): EngineErrorContext {
+  return {
+    serverLabel: 'Redis server',
+    host: conn ? conn.host || 'localhost' : '',
+    port: conn ? String(conn.port || DEFAULT_PORT) : '',
+    username: conn ? conn.user || conn.username || 'default' : '',
+    database: conn ? resolveDb(conn) : '',
+  };
+}
+
 export const redisEngine: DatabaseEngine = {
   id: 'redis',
   label: 'Redis',
@@ -68,12 +94,31 @@ export const redisEngine: DatabaseEngine = {
 
   async testConnection(conn): Promise<void> {
     const client = buildClient(conn);
+    // Capturing the error keeps ioredis from printing it as an "Unhandled
+    // error event" (raw stack) and lets us classify the real cause instead of
+    // the generic "Connection is closed." that connect() rejects with.
+    let captured: string | undefined;
+    client.on('error', (err: Error) => {
+      if (!captured) captured = err.message;
+    });
     try {
       await client.connect();
+      // Validate the configured DB index explicitly — an out-of-range index
+      // otherwise surfaces only as an async error and would be reported as a
+      // successful connection.
+      await client.select(parseInt(resolveDb(conn), 10) || 0);
       await client.ping();
     } catch (err) {
+      const raw =
+        captured || (err instanceof Error ? err.message : String(err));
       throw new Error(
-        `Database connection failed: ${err instanceof Error ? err.message : String(err)}`,
+        explainError({
+          raw,
+          patterns: ERROR_PATTERNS,
+          ctx: errorContext(conn),
+          tool: 'redis',
+          mode: 'connect',
+        }),
       );
     } finally {
       client.disconnect();
@@ -99,49 +144,24 @@ export const redisEngine: DatabaseEngine = {
   },
 
   formatDumpError(exitCode, errorMessages, conn): string {
-    const errorMessage = errorMessages.join('\n');
-    const lower = errorMessage.toLowerCase();
-    const host = conn.host || 'localhost';
-    const port = conn.port || DEFAULT_PORT;
-
-    if (lower.includes('wrongpass') || lower.includes('noauth')) {
-      return (
-        'Redis authentication failed\n\n' +
-        'Please verify:\n  • The password is correct in dbdock.config.json\n  • The username (if using ACLs) is correct'
-      );
-    }
-    if (lower.includes('econnrefused') || lower.includes('connect')) {
-      return (
-        'Cannot connect to Redis server\n\n' +
-        `Connection details:\n  Host: ${host}\n  Port: ${port}\n\n` +
-        'Please verify:\n  • The server is running\n  • Host and port are correct\n  • Network/firewall allows connection'
-      );
-    }
-    if (errorMessages.length > 0) {
-      return (
-        `Redis backup failed with exit code ${exitCode}\n\n` +
-        `Error details:\n${errorMessage}`
-      );
-    }
-    return `Redis backup failed with exit code ${exitCode}.`;
+    return explainError({
+      raw: errorMessages.join('\n'),
+      patterns: ERROR_PATTERNS,
+      ctx: errorContext(conn),
+      tool: 'Redis backup',
+      exitCode,
+      mode: 'dump',
+    });
   },
 
   formatRestoreError(errorOutput): string {
-    const lower = errorOutput.toLowerCase();
-
-    if (lower.includes('wrongpass') || lower.includes('noauth')) {
-      return (
-        'Redis authentication failed\n\n' +
-        'Please verify:\n  • The password is correct\n  • The user has write access'
-      );
-    }
-    if (lower.includes('econnrefused') || lower.includes('connect')) {
-      return (
-        'Failed to connect to Redis\n\n' +
-        'Please verify:\n  • The server is running\n  • Host and port are correct'
-      );
-    }
-    return `Redis restore error:\n\n${errorOutput.trim()}`;
+    return explainError({
+      raw: errorOutput,
+      patterns: ERROR_PATTERNS,
+      ctx: errorContext(),
+      tool: 'Redis restore',
+      mode: 'restore',
+    });
   },
 
   shouldIgnoreRestoreMessage(message): boolean {
