@@ -4,13 +4,21 @@ import {
   createReadStream,
   createWriteStream,
   existsSync,
+  mkdtempSync,
+  openSync,
+  closeSync,
+  readSync,
+  rmdirSync,
   unlinkSync,
 } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
-import { randomBytes } from 'crypto';
+import { dirname, join, resolve, sep } from 'path';
 import { createBrotliDecompress } from 'zlib';
-import { createDecipheriv } from 'crypto';
+import {
+  createBackupDecryptStream,
+  createLegacyDecryptStream,
+} from '../crypto/backup-crypto';
+import { BACKUP_HEADER_LENGTH, hasBackupHeader } from '../crypto/backup-format';
 import { S3StorageAdapter } from '../storage/adapters/s3.adapter';
 import { R2StorageAdapter } from '../storage/adapters/r2.adapter';
 import { CloudinaryStorageAdapter } from '../storage/adapters/cloudinary.adapter';
@@ -79,35 +87,51 @@ function buildRemoteAdapter(storage: CLIConfig['storage']): IStorageAdapter {
   }
 }
 
+function peekBackupHeader(filePath: string): Buffer {
+  const fd = openSync(filePath, 'r');
+  try {
+    const buf = Buffer.alloc(BACKUP_HEADER_LENGTH);
+    const bytesRead = readSync(fd, buf, 0, BACKUP_HEADER_LENGTH, 0);
+    return buf.subarray(0, bytesRead);
+  } finally {
+    closeSync(fd);
+  }
+}
+
 async function openSourceStream(
   config: CLIConfig,
   storageKey: string,
   callbacks: RestoreProgressCallback | undefined,
   tempFiles: string[],
-): Promise<Readable> {
+): Promise<{ path: string }> {
   if (callbacks?.onStage) {
     callbacks.onStage('Downloading backup');
   }
 
   if (config.storage.provider === 'local') {
-    const localPath = storageKey.includes('/')
-      ? storageKey
-      : join(config.storage.local?.path || './backups', storageKey);
-    if (!existsSync(localPath)) {
-      throw new Error(`Backup file not found: ${localPath}`);
+    const basePath = resolve(config.storage.local?.path || './backups');
+    if (storageKey.split(/[\\/]/).includes('..')) {
+      throw new Error(`Invalid backup key: ${storageKey}`);
     }
-    return createReadStream(localPath);
+    const candidate = storageKey.includes('/')
+      ? resolve(storageKey)
+      : resolve(basePath, storageKey);
+    if (candidate !== basePath && !candidate.startsWith(basePath + sep)) {
+      throw new Error(`Backup key escapes storage directory: ${storageKey}`);
+    }
+    if (!existsSync(candidate)) {
+      throw new Error(`Backup file not found: ${candidate}`);
+    }
+    return { path: candidate };
   }
 
   const adapter = buildRemoteAdapter(config.storage);
-  const tempFilePath = join(
-    tmpdir(),
-    `dbdock-restore-${randomBytes(8).toString('hex')}.bin`,
-  );
+  const tempDir = mkdtempSync(join(tmpdir(), 'dbdock-'));
+  const tempFilePath = join(tempDir, 'restore.bin');
   tempFiles.push(tempFilePath);
 
   const downloadStream = await adapter.downloadStream({ key: storageKey });
-  const tempWriteStream = createWriteStream(tempFilePath);
+  const tempWriteStream = createWriteStream(tempFilePath, { mode: 0o600 });
 
   let downloadedBytes = 0;
   downloadStream.on('data', (chunk: Buffer) => {
@@ -117,14 +141,14 @@ async function openSourceStream(
     }
   });
 
-  await new Promise<void>((resolve, reject) => {
+  await new Promise<void>((resolvePromise, reject) => {
     downloadStream.pipe(tempWriteStream);
     downloadStream.on('error', reject);
     tempWriteStream.on('error', reject);
-    tempWriteStream.on('finish', resolve);
+    tempWriteStream.on('finish', resolvePromise);
   });
 
-  return createReadStream(tempFilePath);
+  return { path: tempFilePath };
 }
 
 export async function restoreBackupStandalone(
@@ -141,16 +165,26 @@ export async function restoreBackupStandalone(
       if (existsSync(file)) {
         unlinkSync(file);
       }
+      const dir = dirname(file);
+      if (dir.startsWith(join(tmpdir(), 'dbdock-')) && existsSync(dir)) {
+        try {
+          rmdirSync(dir);
+        } catch {
+          void 0;
+        }
+      }
     }
   };
 
   try {
-    let stream: Readable | Transform = await openSourceStream(
+    const source = await openSourceStream(
       config,
       options.storageKey,
       callbacks,
       tempFiles,
     );
+
+    let stream: Readable | Transform = createReadStream(source.path);
 
     if (config.backup?.encryption?.enabled && config.backup.encryption.key) {
       if (callbacks?.onStage) {
@@ -162,8 +196,10 @@ export async function restoreBackupStandalone(
           `Invalid encryption key length: ${keyBuffer.length} bytes (expected 32 bytes)`,
         );
       }
-      const iv = Buffer.alloc(16);
-      const decipher = createDecipheriv('aes-256-cbc', keyBuffer, iv);
+      const isVersioned = hasBackupHeader(peekBackupHeader(source.path));
+      const decipher = isVersioned
+        ? createBackupDecryptStream(keyBuffer)
+        : createLegacyDecryptStream(keyBuffer);
       stream = stream.pipe(decipher);
     }
 

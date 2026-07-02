@@ -119,24 +119,39 @@ export class S3StorageAdapter implements IStorageAdapter {
 
   async listObjects(options?: ListOptions): Promise<StorageObject[]> {
     try {
-      const command = new ListObjectsV2Command({
-        Bucket: this.bucket,
-        Prefix: options?.prefix,
-        MaxKeys: options?.maxKeys || 1000,
-        StartAfter: options?.startAfter,
-      });
+      const objects: StorageObject[] = [];
+      const limit = options?.maxKeys;
+      let continuationToken: string | undefined;
 
-      const response = await this.client.send(command);
+      do {
+        const command = new ListObjectsV2Command({
+          Bucket: this.bucket,
+          Prefix: options?.prefix,
+          StartAfter: continuationToken ? undefined : options?.startAfter,
+          ContinuationToken: continuationToken,
+          ...(limit ? { MaxKeys: limit - objects.length } : {}),
+        });
 
-      if (!response.Contents) {
-        return [];
-      }
+        const response = await this.client.send(command);
 
-      return response.Contents.map((obj) => ({
-        key: obj.Key!,
-        size: obj.Size || 0,
-        lastModified: obj.LastModified || new Date(),
-      }));
+        for (const obj of response.Contents ?? []) {
+          objects.push({
+            key: obj.Key!,
+            size: obj.Size || 0,
+            lastModified: obj.LastModified || new Date(),
+          });
+        }
+
+        if (limit && objects.length >= limit) {
+          return objects.slice(0, limit);
+        }
+
+        continuationToken = response.IsTruncated
+          ? response.NextContinuationToken
+          : undefined;
+      } while (continuationToken);
+
+      return objects;
     } catch (error) {
       const friendlyMessage = this.getFriendlyError(error);
       this.logger.error(`Failed to list objects: ${friendlyMessage}`);

@@ -2,8 +2,9 @@ import { CLIConfig } from '../cli/utils/config';
 import { Readable, Transform, PassThrough } from 'stream';
 import { createWriteStream, mkdirSync } from 'fs';
 import { dirname, join } from 'path';
-import { createCipheriv, randomBytes } from 'crypto';
+import { randomBytes } from 'crypto';
 import { createBrotliCompress } from 'zlib';
+import { createBackupEncryptStream } from '../crypto/backup-crypto';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Upload } from '@aws-sdk/lib-storage';
@@ -45,7 +46,7 @@ export async function createBackupStandalone(
 
   if (config.storage.provider === 'local') {
     const dir = dirname(storageKey);
-    mkdirSync(dir, { recursive: true });
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
 
   const dbConfig = config.database;
@@ -104,8 +105,7 @@ export async function createBackupStandalone(
       );
     }
 
-    const iv = Buffer.alloc(16);
-    const cipher = createCipheriv('aes-256-cbc', keyBuffer, iv);
+    const cipher = createBackupEncryptStream(keyBuffer);
     stream = stream.pipe(cipher);
     streams.push(cipher);
   }
@@ -122,7 +122,7 @@ export async function createBackupStandalone(
     if (callbacks?.onStage) {
       callbacks.onStage('Writing to local storage');
     }
-    const writeStream = createWriteStream(storageKey);
+    const writeStream = createWriteStream(storageKey, { mode: 0o600 });
     stream.pipe(writeStream);
 
     await new Promise<void>((resolve, reject) => {

@@ -9,6 +9,7 @@ import {
   parsePostgresUrlToConfig,
   applyDbUrlToCliDatabase,
 } from '../../config/env-url.helper';
+import { checkFilePermissions } from '../../config/permissions.checker';
 
 export const CONFIG_FILE = 'dbdock.config.json';
 
@@ -245,6 +246,15 @@ export function loadConfig(): CLIConfig {
   if (!existsSync(configPath)) {
     config = loadConfigFromEnv();
   } else {
+    const permissions = checkFilePermissions(configPath);
+    if (!permissions.secure) {
+      console.warn(
+        '\x1b[33m%s\x1b[0m',
+        `⚠️  Config file has insecure permissions (${permissions.currentMode}).\n` +
+          `   Recommended: ${permissions.recommendedMode}\n` +
+          `   Fix with: chmod 600 ${configPath}\n`,
+      );
+    }
     const content = readFileSync(configPath, 'utf-8');
     config = JSON.parse(content) as CLIConfig;
   }

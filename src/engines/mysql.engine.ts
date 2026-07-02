@@ -7,6 +7,7 @@ import {
   DumpHandle,
 } from './engine.types';
 import { EngineErrorContext, ErrorPattern, explainError } from './error-format';
+import { assertValidDatabaseName } from './db-name.validator';
 
 const DUMP_BINARY = 'mysqldump';
 const CLIENT_BINARY = 'mysql';
@@ -171,6 +172,9 @@ export const mysqlEngine: DatabaseEngine = {
 
   async getStats(conn): Promise<DatabaseStats> {
     const database = conn.database || '';
+    if (database) {
+      assertValidDatabaseName(database);
+    }
     const schemaFilter = database
       ? `WHERE table_schema = '${database}'`
       : `WHERE table_schema NOT IN ('mysql','information_schema','performance_schema','sys')`;

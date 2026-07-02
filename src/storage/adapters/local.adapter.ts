@@ -39,7 +39,18 @@ export class LocalStorageAdapter implements IStorageAdapter {
   }
 
   private getFullPath(key: string): string {
-    return path.join(this.basePath, key);
+    if (key.split(/[\\/]/).includes('..') || path.isAbsolute(key)) {
+      throw new Error(`Invalid storage key: ${key}`);
+    }
+    const resolvedBase = path.resolve(this.basePath);
+    const fullPath = path.resolve(resolvedBase, key);
+    if (
+      fullPath !== resolvedBase &&
+      !fullPath.startsWith(resolvedBase + path.sep)
+    ) {
+      throw new Error(`Storage key escapes base path: ${key}`);
+    }
+    return fullPath;
   }
 
   private getMetadataPath(key: string): string {

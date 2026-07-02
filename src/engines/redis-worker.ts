@@ -35,12 +35,26 @@ async function dump(): Promise<void> {
   await client.connect();
   const stream = client.scanBufferStream({ count: 500 });
   for await (const keys of stream as AsyncIterable<Buffer[]>) {
+    if (keys.length === 0) continue;
+
+    const pipeline = client.pipeline();
     for (const key of keys) {
-      const payload = (await client.callBuffer('DUMP', key)) as Buffer | null;
+      pipeline.callBuffer('DUMP', key);
+      pipeline.pttl(key);
+    }
+    const results = (await pipeline.exec()) as Array<
+      [Error | null, unknown]
+    > | null;
+    if (!results) continue;
+
+    for (let i = 0; i < keys.length; i++) {
+      const [, payloadRaw] = results[i * 2];
+      const [, pttlRaw] = results[i * 2 + 1];
+      const payload = payloadRaw as Buffer | null;
       if (!payload) continue;
-      const pttl = await client.pttl(key);
+      const pttl = typeof pttlRaw === 'number' ? pttlRaw : Number(pttlRaw);
       const ttlMs = pttl > 0 ? pttl : 0;
-      await writeAsync(frame(key, ttlMs, payload));
+      await writeAsync(frame(keys[i], ttlMs, payload));
     }
   }
   await client.quit();
@@ -49,8 +63,17 @@ async function dump(): Promise<void> {
 async function restore(): Promise<void> {
   const client = buildClient();
   await client.connect();
+  const FLUSH_EVERY = 500;
   let buffer = Buffer.alloc(0);
-  const pending: Promise<unknown>[] = [];
+  let pipeline = client.pipeline();
+  let queued = 0;
+
+  const flush = async (): Promise<void> => {
+    if (queued === 0) return;
+    await pipeline.exec();
+    pipeline = client.pipeline();
+    queued = 0;
+  };
 
   for await (const chunk of process.stdin) {
     buffer = Buffer.concat([buffer, chunk as Buffer]);
@@ -68,15 +91,17 @@ async function restore(): Promise<void> {
         keyStart + keyLen,
         keyStart + keyLen + payloadLen,
       );
-      pending.push(
-        client.callBuffer('RESTORE', key, String(ttlMs), payload, 'REPLACE'),
-      );
+      pipeline.callBuffer('RESTORE', key, String(ttlMs), payload, 'REPLACE');
+      queued++;
+      if (queued >= FLUSH_EVERY) {
+        await flush();
+      }
       offset = keyStart + keyLen + payloadLen;
     }
     buffer = buffer.subarray(offset);
   }
 
-  await Promise.all(pending);
+  await flush();
   await client.quit();
 }
 

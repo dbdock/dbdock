@@ -8,6 +8,7 @@ import {
   DumpSpawnOptions,
 } from './engine.types';
 import { EngineErrorContext, ErrorPattern, explainError } from './error-format';
+import { assertValidDatabaseName } from './db-name.validator';
 
 const DEFAULT_PORT = 5432;
 const CLIENT_TOOL_HINT =
@@ -189,6 +190,7 @@ export const postgresEngine: DatabaseEngine = {
 
   async getStats(conn): Promise<DatabaseStats> {
     const database = conn.database || 'postgres';
+    assertValidDatabaseName(database);
     const queries = [
       `SELECT count(*) as table_count FROM information_schema.tables WHERE table_schema = 'public'`,
       `SELECT pg_size_pretty(pg_database_size('${database}')) as size`,

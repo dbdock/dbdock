@@ -108,9 +108,11 @@ export class RetentionService {
     let spaceSaved = 0;
     const storageAdapter = this.storageService.getAdapter();
 
+    const backupsById = new Map(completedBackups.map((b) => [b.id, b]));
+
     for (const backupInfo of backupsToDelete) {
       try {
-        const backup = completedBackups.find((b) => b.id === backupInfo.id);
+        const backup = backupsById.get(backupInfo.id);
         if (!backup) continue;
 
         const reason = `Retention: ${backupInfo.reason ?? 'expired'}`;

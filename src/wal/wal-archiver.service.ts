@@ -84,8 +84,8 @@ export class WalArchiverService implements OnModuleInit {
       streams.push(compressStream);
 
       if (this.cryptoService.isEnabled()) {
-        const { stream: encryptStream } =
-          this.cryptoService.createEncryptStream();
+        const encryptStream =
+          this.cryptoService.createSelfDescribingEncryptStream();
         streams.push(encryptStream);
       }
 
@@ -223,11 +223,8 @@ export class WalArchiverService implements OnModuleInit {
     if (this.cryptoService.isEnabled()) {
       const metadata = await this.getWalMetadata(walFile);
       if (metadata && metadata.status === WalStatus.ARCHIVED) {
-        const decryptStream = this.cryptoService.createDecryptStream({
-          algorithm: 'aes-256-gcm',
-          salt: '',
-          iv: '',
-        });
+        const decryptStream =
+          this.cryptoService.createSelfDescribingDecryptStream();
         stream = stream.pipe(decryptStream);
       }
     }

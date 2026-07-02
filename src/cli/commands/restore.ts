@@ -12,11 +12,27 @@ import {
 } from '../../storage/storage.interface';
 import { getEngine } from '../../engines';
 import { createBrotliDecompress } from 'zlib';
-import { createDecipheriv } from 'crypto';
 import { Readable, Transform } from 'stream';
 import { tmpdir } from 'os';
-import { join } from 'path';
-import { createWriteStream, unlinkSync, existsSync } from 'fs';
+import { join, resolve, dirname } from 'path';
+import {
+  createWriteStream,
+  unlinkSync,
+  existsSync,
+  mkdtempSync,
+  rmdirSync,
+  openSync,
+  closeSync,
+  readSync,
+} from 'fs';
+import {
+  createBackupDecryptStream,
+  createLegacyDecryptStream,
+} from '../../crypto/backup-crypto';
+import {
+  BACKUP_HEADER_LENGTH,
+  hasBackupHeader,
+} from '../../crypto/backup-format';
 import { Logger } from '@nestjs/common';
 import { MultiStepProgress } from '../utils/progress';
 
@@ -43,6 +59,17 @@ interface SelectedBackupAnswer {
 
 interface ConfirmAnswer {
   confirm: boolean;
+}
+
+function peekBackupHeader(filePath: string): Buffer {
+  const fd = openSync(filePath, 'r');
+  try {
+    const buf = Buffer.alloc(BACKUP_HEADER_LENGTH);
+    const bytesRead = readSync(fd, buf, 0, BACKUP_HEADER_LENGTH, 0);
+    return buf.subarray(0, bytesRead);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 export async function restoreCommand(): Promise<void> {
@@ -477,17 +504,40 @@ export async function restoreCommand(): Promise<void> {
 
     let stream: Readable | Transform;
     let tempFilePath: string | null = null;
+    let backupFilePath: string | null = null;
+
+    const cleanupTemp = () => {
+      if (tempFilePath && existsSync(tempFilePath)) {
+        unlinkSync(tempFilePath);
+        const dir = dirname(tempFilePath);
+        if (dir.startsWith(join(tmpdir(), 'dbdock-')) && existsSync(dir)) {
+          try {
+            rmdirSync(dir);
+          } catch {
+            void 0;
+          }
+        }
+      }
+    };
 
     try {
       if (config.storage.provider === 'local') {
         const localAdapter = adapter as LocalStorageAdapter;
+        backupFilePath = resolve(
+          config.storage.local?.path || './backups',
+          selectedBackup,
+        );
         stream = await localAdapter.downloadStream({ key: selectedBackup });
       } else {
-        tempFilePath = join(tmpdir(), `dbdock-restore-${Date.now()}.sql`);
+        const tempDir = mkdtempSync(join(tmpdir(), 'dbdock-'));
+        tempFilePath = join(tempDir, 'restore.sql');
+        backupFilePath = tempFilePath;
         const downloadStream = await adapter.downloadStream({
           key: selectedBackup,
         });
-        const tempWriteStream = createWriteStream(tempFilePath);
+        const tempWriteStream = createWriteStream(tempFilePath, {
+          mode: 0o600,
+        });
 
         let downloadedBytes = 0;
         downloadStream.on('data', (chunk: Buffer) => {
@@ -496,11 +546,11 @@ export async function restoreCommand(): Promise<void> {
           restoreSteps.nextStep(`${mb} MB downloaded`);
         });
 
-        await new Promise<void>((resolve, reject) => {
+        await new Promise<void>((resolvePromise, reject) => {
           downloadStream.pipe(tempWriteStream);
           downloadStream.on('error', reject);
           tempWriteStream.on('error', reject);
-          tempWriteStream.on('finish', resolve);
+          tempWriteStream.on('finish', resolvePromise);
         });
 
         const { createReadStream } = await import('fs');
@@ -510,17 +560,13 @@ export async function restoreCommand(): Promise<void> {
       restoreSteps.nextStep();
     } catch (err) {
       restoreSteps.fail(err instanceof Error ? err.message : String(err));
-      if (tempFilePath && existsSync(tempFilePath)) {
-        unlinkSync(tempFilePath);
-      }
+      cleanupTemp();
       process.exit(1);
     }
 
     stream.on('error', (err) => {
       restoreSteps.fail(`Failed to read backup file: ${err.message}`);
-      if (tempFilePath && existsSync(tempFilePath)) {
-        unlinkSync(tempFilePath);
-      }
+      cleanupTemp();
       process.exit(1);
     });
 
@@ -538,14 +584,17 @@ export async function restoreCommand(): Promise<void> {
             `  • Generate a valid key: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"\n` +
             `  • Update the "backup.encryption.key" in your dbdock.config.json`,
         );
-        if (tempFilePath && existsSync(tempFilePath)) {
-          unlinkSync(tempFilePath);
-        }
+        cleanupTemp();
         process.exit(1);
       }
 
-      const iv = Buffer.alloc(16);
-      const decipher = createDecipheriv('aes-256-cbc', keyBuffer, iv);
+      const isVersioned =
+        backupFilePath !== null &&
+        existsSync(backupFilePath) &&
+        hasBackupHeader(peekBackupHeader(backupFilePath));
+      const decipher = isVersioned
+        ? createBackupDecryptStream(keyBuffer)
+        : createLegacyDecryptStream(keyBuffer);
       stream = stream.pipe(decipher);
       restoreSteps.nextStep();
     } else {
@@ -568,9 +617,7 @@ export async function restoreCommand(): Promise<void> {
       let hasWarnings = false;
 
       pgRestoreProcess.on('close', (code) => {
-        if (tempFilePath && existsSync(tempFilePath)) {
-          unlinkSync(tempFilePath);
-        }
+        cleanupTemp();
 
         if (code === 0 || (code === 1 && !errorOutput && hasWarnings)) {
           resolve();
@@ -585,9 +632,7 @@ export async function restoreCommand(): Promise<void> {
         }
       });
       pgRestoreProcess.on('error', (err) => {
-        if (tempFilePath && existsSync(tempFilePath)) {
-          unlinkSync(tempFilePath);
-        }
+        cleanupTemp();
         reject(
           new Error(
             `Failed to start the restore process: ${err.message}\n\n${engine.clientToolHint}`,

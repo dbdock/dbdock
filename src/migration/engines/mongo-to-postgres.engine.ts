@@ -333,7 +333,250 @@ async function migrateCollection(
   };
 }
 
+const MAX_PARAMS = 65000;
+
+interface PendingRow {
+  columns: string[];
+  values: unknown[];
+}
+
+interface PendingTable {
+  table: string;
+  rows: PendingRow[];
+}
+
+async function flushPendingTable(
+  pgClient: PoolClient,
+  schema: string,
+  pending: PendingTable,
+): Promise<void> {
+  if (pending.rows.length === 0) return;
+
+  const columns = pending.rows[0].columns;
+  const columnCount = columns.length;
+  if (columnCount === 0) return;
+
+  const batchSize = Math.max(1, Math.floor(MAX_PARAMS / columnCount));
+
+  for (let start = 0; start < pending.rows.length; start += batchSize) {
+    const chunk = pending.rows.slice(start, start + batchSize);
+    const placeholders: string[] = [];
+    const values: unknown[] = [];
+    let paramIdx = 1;
+
+    for (const row of chunk) {
+      const rowPlaceholders: string[] = [];
+      for (const value of row.values) {
+        rowPlaceholders.push(`$${paramIdx++}`);
+        values.push(value);
+      }
+      placeholders.push(`(${rowPlaceholders.join(', ')})`);
+    }
+
+    await pgClient.query(
+      `INSERT INTO ${schema}."${pending.table}" (${columns.join(', ')}) VALUES ${placeholders.join(', ')} ON CONFLICT DO NOTHING`,
+      values,
+    );
+  }
+
+  pending.rows = [];
+}
+
+function buildDocumentRow(
+  mapping: TableMapping,
+  doc: MongoDocument,
+): PendingRow | null {
+  const columns: string[] = [];
+  const values: unknown[] = [];
+
+  for (const field of mapping.fields) {
+    const value = getNestedValue(doc, field.sourceField);
+
+    let pgValue: unknown;
+    if (field.transform === 'uuid_from_objectid' && value) {
+      const v = value as { toString: () => string };
+      pgValue = objectIdToUuid(v.toString());
+    } else if (field.transform === 'jsonb') {
+      pgValue = value != null ? JSON.stringify(value) : null;
+    } else if (field.transform === 'cast' && value != null) {
+      const result = coerceValue(value, typeof value, field.targetType);
+      pgValue = result.success ? result.value : null;
+    } else if (value instanceof Date) {
+      pgValue = value;
+    } else if (
+      typeof value === 'object' &&
+      value !== null &&
+      field.targetType === 'jsonb'
+    ) {
+      pgValue = JSON.stringify(value);
+    } else if (value !== undefined && value !== null) {
+      const maybeToString = value as { toString?: () => string };
+      pgValue = maybeToString.toString
+        ? maybeToString.toString()
+        : (value as unknown);
+    } else {
+      pgValue = null;
+    }
+
+    columns.push(`"${field.targetColumn}"`);
+    values.push(pgValue);
+  }
+
+  return columns.length > 0 ? { columns, values } : null;
+}
+
+function buildNestedRow(
+  nested: NestedMapping,
+  value: Record<string, unknown>,
+  parentId: string,
+): PendingRow | null {
+  if (!nested.fields) return null;
+
+  const columns: string[] = [];
+  const values: unknown[] = [];
+
+  for (const field of nested.fields) {
+    if (field.sourceField === 'id') {
+      columns.push('"id"');
+      values.push(randomUUID());
+    } else if (
+      field.sourceField.includes('_id') &&
+      field.targetType === 'uuid'
+    ) {
+      columns.push(`"${field.targetColumn}"`);
+      values.push(parentId);
+    } else {
+      const fieldName = field.sourceField.split('.').pop() || field.sourceField;
+      columns.push(`"${field.targetColumn}"`);
+      values.push(value[fieldName] ?? null);
+    }
+  }
+
+  return { columns, values };
+}
+
+function buildArrayRow(
+  arr: ArrayMapping,
+  element: unknown,
+  parentId: string,
+): PendingRow {
+  if (arr.strategy === 'child_table' && arr.fields) {
+    const columns: string[] = [];
+    const values: unknown[] = [];
+
+    for (const field of arr.fields) {
+      if (field.sourceField === 'id') {
+        columns.push('"id"');
+        values.push(randomUUID());
+      } else if (
+        field.sourceField.includes('_id') &&
+        field.targetType === 'uuid'
+      ) {
+        columns.push(`"${field.targetColumn}"`);
+        values.push(parentId);
+      } else {
+        const fieldName =
+          field.sourceField.split('.').pop() || field.sourceField;
+        const val =
+          typeof element === 'object' && element
+            ? ((element as Record<string, unknown>)[fieldName] ?? null)
+            : null;
+        columns.push(`"${field.targetColumn}"`);
+        values.push(val);
+      }
+    }
+
+    return { columns, values };
+  }
+
+  const val: unknown =
+    typeof element === 'object' && element !== null
+      ? JSON.stringify(element)
+      : element;
+
+  return {
+    columns: ['"id"', `"${arr.parentForeignKey}"`, '"value"'],
+    values: [randomUUID(), parentId, val],
+  };
+}
+
 async function processBatch(
+  pgClient: PoolClient,
+  mapping: TableMapping,
+  docs: MongoDocument[],
+  schema: string,
+  errors: MigrationError[],
+): Promise<number> {
+  const topLevel: PendingTable = { table: mapping.targetTable, rows: [] };
+  const nestedTables = new Map<string, PendingTable>();
+  const arrayTables = new Map<string, PendingTable>();
+
+  for (const doc of docs) {
+    const parentId = doc._id
+      ? objectIdToUuid(doc._id.toString())
+      : randomUUID();
+
+    const docRow = buildDocumentRow(mapping, doc);
+    if (docRow) {
+      topLevel.rows.push(docRow);
+    }
+
+    for (const nested of mapping.nestedMappings) {
+      if (nested.strategy === 'table' && nested.fields) {
+        const nestedValue = getNestedValue(doc, nested.sourceField);
+        if (
+          nestedValue &&
+          typeof nestedValue === 'object' &&
+          !Array.isArray(nestedValue)
+        ) {
+          const row = buildNestedRow(
+            nested,
+            nestedValue as Record<string, unknown>,
+            parentId,
+          );
+          if (row) {
+            const bucket = nestedTables.get(nested.targetTable) ?? {
+              table: nested.targetTable,
+              rows: [],
+            };
+            bucket.rows.push(row);
+            nestedTables.set(nested.targetTable, bucket);
+          }
+        }
+      }
+    }
+
+    for (const arr of mapping.arrayMappings) {
+      const arrayValue = getNestedValue(doc, arr.sourceField);
+      if (Array.isArray(arrayValue)) {
+        for (const element of arrayValue as unknown[]) {
+          const row = buildArrayRow(arr, element, parentId);
+          const bucket = arrayTables.get(arr.targetTable) ?? {
+            table: arr.targetTable,
+            rows: [],
+          };
+          bucket.rows.push(row);
+          arrayTables.set(arr.targetTable, bucket);
+        }
+      }
+    }
+  }
+
+  try {
+    await flushPendingTable(pgClient, schema, topLevel);
+    for (const pending of nestedTables.values()) {
+      await flushPendingTable(pgClient, schema, pending);
+    }
+    for (const pending of arrayTables.values()) {
+      await flushPendingTable(pgClient, schema, pending);
+    }
+    return 0;
+  } catch {
+    return processBatchPerDocument(pgClient, mapping, docs, schema, errors);
+  }
+}
+
+async function processBatchPerDocument(
   pgClient: PoolClient,
   mapping: TableMapping,
   docs: MongoDocument[],
@@ -371,49 +614,11 @@ async function insertDocument(
 ): Promise<void> {
   const parentId = doc._id ? objectIdToUuid(doc._id.toString()) : randomUUID();
 
-  const columns: string[] = [];
-  const values: unknown[] = [];
-  const placeholders: string[] = [];
-  let paramIdx = 1;
-
-  for (const field of mapping.fields) {
-    const value = getNestedValue(doc, field.sourceField);
-
-    let pgValue: unknown;
-    if (field.transform === 'uuid_from_objectid' && value) {
-      const v = value as { toString: () => string };
-      pgValue = objectIdToUuid(v.toString());
-    } else if (field.transform === 'jsonb') {
-      pgValue = value != null ? JSON.stringify(value) : null;
-    } else if (field.transform === 'cast' && value != null) {
-      const result = coerceValue(value, typeof value, field.targetType);
-      pgValue = result.success ? result.value : null;
-    } else if (value instanceof Date) {
-      pgValue = value;
-    } else if (
-      typeof value === 'object' &&
-      value !== null &&
-      field.targetType === 'jsonb'
-    ) {
-      pgValue = JSON.stringify(value);
-    } else if (value !== undefined && value !== null) {
-      const maybeToString = value as { toString?: () => string };
-      pgValue = maybeToString.toString
-        ? maybeToString.toString()
-        : (value as unknown);
-    } else {
-      pgValue = null;
-    }
-
-    columns.push(`"${field.targetColumn}"`);
-    values.push(pgValue);
-    placeholders.push(`$${paramIdx++}`);
-  }
-
-  if (columns.length > 0) {
+  const docRow = buildDocumentRow(mapping, doc);
+  if (docRow) {
     await pgClient.query(
-      `INSERT INTO ${schema}."${mapping.targetTable}" (${columns.join(', ')}) VALUES (${placeholders.join(', ')}) ON CONFLICT DO NOTHING`,
-      values,
+      `INSERT INTO ${schema}."${mapping.targetTable}" (${docRow.columns.join(', ')}) VALUES (${docRow.columns.map((_, i) => `$${i + 1}`).join(', ')}) ON CONFLICT DO NOTHING`,
+      docRow.values,
     );
   }
 

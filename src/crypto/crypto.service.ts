@@ -37,6 +37,131 @@ export class CryptoService {
     return this.enabled;
   }
 
+  private deriveKey(salt: Buffer): Buffer {
+    return crypto.pbkdf2Sync(
+      this.secret as string,
+      salt,
+      this.iterations,
+      KEY_LENGTH,
+      'sha512',
+    );
+  }
+
+  createSelfDescribingEncryptStream(): Transform {
+    if (!this.enabled || !this.secret) {
+      return new Transform({
+        transform(chunk, encoding, callback) {
+          this.push(chunk);
+          callback();
+        },
+      });
+    }
+
+    const salt = crypto.randomBytes(SALT_LENGTH);
+    const iv = crypto.randomBytes(IV_LENGTH);
+    const key = this.deriveKey(salt);
+    const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
+
+    let headerWritten = false;
+
+    return new Transform({
+      transform(
+        chunk: Buffer,
+        encoding: BufferEncoding,
+        callback: TransformCallback,
+      ) {
+        try {
+          if (!headerWritten) {
+            this.push(Buffer.concat([salt, iv]));
+            headerWritten = true;
+          }
+          this.push(cipher.update(chunk));
+          callback();
+        } catch (error) {
+          callback(error as Error);
+        }
+      },
+      flush(callback: TransformCallback) {
+        try {
+          if (!headerWritten) {
+            this.push(Buffer.concat([salt, iv]));
+            headerWritten = true;
+          }
+          this.push(cipher.final());
+          this.push(cipher.getAuthTag());
+          callback();
+        } catch (error) {
+          callback(error as Error);
+        }
+      },
+    });
+  }
+
+  createSelfDescribingDecryptStream(): Transform {
+    if (!this.enabled || !this.secret) {
+      return new Transform({
+        transform(chunk, encoding, callback) {
+          this.push(chunk);
+          callback();
+        },
+      });
+    }
+
+    const deriveKey = (salt: Buffer): Buffer => this.deriveKey(salt);
+    const headerTotal = SALT_LENGTH + IV_LENGTH;
+
+    let headerBuffer = Buffer.alloc(0);
+    let headerParsed = false;
+    let decipher: crypto.DecipherGCM | null = null;
+    let buffer = Buffer.alloc(0);
+
+    return new Transform({
+      transform(
+        chunk: Buffer,
+        encoding: BufferEncoding,
+        callback: TransformCallback,
+      ) {
+        try {
+          if (!headerParsed) {
+            headerBuffer = Buffer.concat([headerBuffer, chunk]);
+            if (headerBuffer.length < headerTotal) {
+              callback();
+              return;
+            }
+            const salt = headerBuffer.subarray(0, SALT_LENGTH);
+            const iv = headerBuffer.subarray(SALT_LENGTH, headerTotal);
+            decipher = crypto.createDecipheriv(ALGORITHM, deriveKey(salt), iv);
+            buffer = headerBuffer.subarray(headerTotal);
+            headerParsed = true;
+          } else {
+            buffer = Buffer.concat([buffer, chunk]);
+          }
+
+          if (decipher && buffer.length > TAG_LENGTH) {
+            const dataLength = buffer.length - TAG_LENGTH;
+            this.push(decipher.update(buffer.subarray(0, dataLength)));
+            buffer = buffer.subarray(dataLength);
+          }
+
+          callback();
+        } catch (error) {
+          callback(error as Error);
+        }
+      },
+      flush(callback: TransformCallback) {
+        try {
+          if (decipher && buffer.length === TAG_LENGTH) {
+            decipher.setAuthTag(buffer);
+            this.push(decipher.final());
+          }
+          callback();
+        } catch (error) {
+          callback(error as Error);
+        }
+      },
+    });
+  }
+
   createEncryptStream(): {
     stream: Transform;
     metadata: EncryptionMetadata;
@@ -130,7 +255,6 @@ export class CryptoService {
     const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
 
     let buffer = Buffer.alloc(0);
-    const authTagSet = false;
 
     return new Transform({
       transform(
@@ -141,19 +265,14 @@ export class CryptoService {
         try {
           buffer = Buffer.concat([buffer, chunk]);
 
-          if (!authTagSet && buffer.length >= TAG_LENGTH) {
+          if (buffer.length > TAG_LENGTH) {
             const dataLength = buffer.length - TAG_LENGTH;
             const data = buffer.subarray(0, dataLength);
-            const tag = buffer.subarray(dataLength);
 
             const decrypted = decipher.update(data);
             this.push(decrypted);
 
-            buffer = tag;
-          } else if (authTagSet) {
-            const decrypted = decipher.update(buffer);
-            this.push(decrypted);
-            buffer = Buffer.alloc(0);
+            buffer = buffer.subarray(dataLength);
           }
 
           callback();
