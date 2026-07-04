@@ -68,7 +68,11 @@ function collectStorage(config: CLIConfig, resources: ResourceInput[]): void {
   }
   const data: Record<string, unknown> = {};
   put(data, 'provider', storage.provider);
-  put(data, 'bucket', storage.bucket ?? storage.s3?.bucket ?? storage.r2?.bucket);
+  put(
+    data,
+    'bucket',
+    storage.bucket ?? storage.s3?.bucket ?? storage.r2?.bucket,
+  );
   put(data, 'region', storage.s3?.region);
   put(data, 'endpoint', storage.endpoint ?? storage.s3?.endpoint);
   put(data, 'localPath', storage.localPath ?? storage.local?.path);
@@ -102,10 +106,7 @@ function collectBackup(config: CLIConfig, resources: ResourceInput[]): void {
   resources.push({ resource: 'backup', id: 'default', data });
 }
 
-function collectSchedules(
-  config: CLIConfig,
-  resources: ResourceInput[],
-): void {
+function collectSchedules(config: CLIConfig, resources: ResourceInput[]): void {
   const schedules = config.backup?.schedules;
   if (!schedules || schedules.length === 0) {
     return;

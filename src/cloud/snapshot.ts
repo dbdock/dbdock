@@ -34,6 +34,10 @@ function sortValue(value: unknown): JsonValue {
   ) {
     return value;
   }
+  // Unreachable for JSON.parse output (no bigint/symbol/function in JSON).
+  // Kept byte-identical with the backend canonicalizer
+  // (backend/src/common/utils/canonical-json.ts) so client and server hashes match.
+  // eslint-disable-next-line @typescript-eslint/no-base-to-string
   return String(value);
 }
 

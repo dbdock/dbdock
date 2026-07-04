@@ -9,9 +9,7 @@ interface SwitchOrgOptions {
   profile?: string;
 }
 
-export async function switchOrgCommand(
-  options: SwitchOrgOptions = {},
-): Promise<void> {
+export function switchOrgCommand(options: SwitchOrgOptions = {}): void {
   if (!options.org) {
     logger.warn(
       'Organizations are not available yet (accounts are single-scope).',

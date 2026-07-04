@@ -27,10 +27,7 @@ export function writeJsonFileAtomic(
   fileMode?: number,
 ): void {
   ensureDir(dirname(path));
-  const tmp = join(
-    dirname(path),
-    `.${Date.now()}-${process.pid}.tmp`,
-  );
+  const tmp = join(dirname(path), `.${Date.now()}-${process.pid}.tmp`);
   const data = JSON.stringify(value, null, 2) + '\n';
   writeFileSync(tmp, data, fileMode !== undefined ? { mode: fileMode } : {});
   renameSync(tmp, path);

@@ -9,9 +9,7 @@ interface LogoutOptions {
   profile?: string;
 }
 
-export async function logoutCommand(
-  options: LogoutOptions = {},
-): Promise<void> {
+export function logoutCommand(options: LogoutOptions = {}): void {
   const profileName = resolveProfileName(options.profile);
   const profile = getProfile(profileName);
   deleteToken(profile.apiBaseUrl);

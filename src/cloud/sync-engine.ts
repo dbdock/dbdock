@@ -3,7 +3,11 @@ import { basename } from 'path';
 import { ApiError, NetworkError } from './api-client';
 import { detectConflicts } from './conflict';
 import { diffSnapshot } from './diff';
-import { readLocalState, writeLocalState, defaultLocalState } from './local-state';
+import {
+  readLocalState,
+  writeLocalState,
+  defaultLocalState,
+} from './local-state';
 import {
   newProjectConfig,
   readProjectConfig,

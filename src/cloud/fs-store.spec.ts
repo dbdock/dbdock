@@ -1,7 +1,11 @@
 import { existsSync, mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { newProjectConfig, readProjectConfig, writeProjectConfig } from './project-config';
+import {
+  newProjectConfig,
+  readProjectConfig,
+  writeProjectConfig,
+} from './project-config';
 import {
   credentialsFileMode,
   getStoredToken,

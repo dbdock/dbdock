@@ -52,8 +52,13 @@ export class ApiClient {
     this.token = token;
   }
 
-  private buildUrl(path: string, query?: Record<string, string | undefined>): string {
-    const url = new URL(`${this.baseUrl}${path.startsWith('/') ? path : `/${path}`}`);
+  private buildUrl(
+    path: string,
+    query?: Record<string, string | undefined>,
+  ): string {
+    const url = new URL(
+      `${this.baseUrl}${path.startsWith('/') ? path : `/${path}`}`,
+    );
     if (query) {
       for (const [key, value] of Object.entries(query)) {
         if (value !== undefined) {
@@ -104,7 +109,11 @@ export class ApiClient {
         const data = text ? (JSON.parse(text) as T) : null;
 
         if (res.status >= 400) {
-          throw new ApiError(res.status, `Request failed (${res.status})`, data);
+          throw new ApiError(
+            res.status,
+            `Request failed (${res.status})`,
+            data,
+          );
         }
         return { status: res.status, data, etag };
       } catch (err) {
@@ -125,19 +134,29 @@ export class ApiClient {
   }
 
   async me(): Promise<Identity> {
-    const res = await this.request<Identity>({ method: 'GET', path: '/auth/me' });
+    const res = await this.request<Identity>({
+      method: 'GET',
+      path: '/auth/me',
+    });
     return res.data as Identity;
   }
 
   async createProject(
-    body: { name: string; slug?: string; organizationId?: string; publicId?: string },
+    body: {
+      name: string;
+      slug?: string;
+      organizationId?: string;
+      publicId?: string;
+    },
     idempotencyKey?: string,
   ): Promise<RemoteProject> {
     const res = await this.request<RemoteProject>({
       method: 'POST',
       path: '/projects',
       body,
-      headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+      headers: idempotencyKey
+        ? { 'Idempotency-Key': idempotencyKey }
+        : undefined,
       retry: false,
     });
     return res.data as RemoteProject;
@@ -151,7 +170,10 @@ export class ApiClient {
     return res.data as RemoteProject;
   }
 
-  async getState(ref: string, etag?: string | null): Promise<RemoteState | null> {
+  async getState(
+    ref: string,
+    etag?: string | null,
+  ): Promise<RemoteState | null> {
     const res = await this.request<RemoteState>({
       method: 'GET',
       path: `/projects/${ref}/state`,
@@ -172,7 +194,12 @@ export class ApiClient {
       events?: SyncEvent[];
     },
     idempotencyKey: string,
-  ): Promise<{ revision: number; stateHash: string; applied: number; resourceHashes: Record<string, string> }> {
+  ): Promise<{
+    revision: number;
+    stateHash: string;
+    applied: number;
+    resourceHashes: Record<string, string>;
+  }> {
     const res = await this.request<{
       revision: number;
       stateHash: string;

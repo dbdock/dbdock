@@ -1,4 +1,8 @@
-import { DEFAULT_PROFILE, defaultApiBaseUrl, globalConfigPath } from './constants';
+import {
+  DEFAULT_PROFILE,
+  defaultApiBaseUrl,
+  globalConfigPath,
+} from './constants';
 import { GlobalConfig, ProfileConfig } from './types';
 import { readJsonFile, writeJsonFileAtomic } from './fs-utils';
 
@@ -27,7 +31,9 @@ export function writeGlobalConfig(config: GlobalConfig): void {
 }
 
 export function resolveProfileName(override?: string): string {
-  return override || process.env.DBDOCK_PROFILE || readGlobalConfig().activeProfile;
+  return (
+    override || process.env.DBDOCK_PROFILE || readGlobalConfig().activeProfile
+  );
 }
 
 export function getProfile(name?: string): ProfileConfig {

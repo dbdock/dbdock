@@ -46,9 +46,7 @@ export async function syncCommand(
     const result = await syncPush(process.cwd(), { force: options.force });
 
     if (result.drained.conflict) {
-      logger.warn(
-        'Cloud has diverged from your local baseline (conflict).',
-      );
+      logger.warn('Cloud has diverged from your local baseline (conflict).');
       logger.info(
         'Resolve with `dbdock sync pull` (adopt cloud) or `dbdock sync --force` (overwrite cloud).',
       );
@@ -63,7 +61,9 @@ export async function syncCommand(
 
     logger.success(
       `Synced. ${result.drained.acked} change set(s) pushed` +
-        (result.drained.failed ? `, ${result.drained.failed} queued for retry` : '') +
+        (result.drained.failed
+          ? `, ${result.drained.failed} queued for retry`
+          : '') +
         '.',
     );
   } catch (err) {

@@ -25,7 +25,9 @@ describe('hashResource', () => {
 
 describe('buildSnapshot + diffSnapshot', () => {
   it('emits upsert for a new resource against an empty base', () => {
-    const snap = buildSnapshot([{ resource: 'backup', id: '1', data: { size: 10 } }]);
+    const snap = buildSnapshot([
+      { resource: 'backup', id: '1', data: { size: 10 } },
+    ]);
     const changes = diffSnapshot({}, snap);
     expect(changes).toHaveLength(1);
     expect(changes[0]).toMatchObject({
@@ -37,17 +39,23 @@ describe('buildSnapshot + diffSnapshot', () => {
   });
 
   it('emits delete for a resource removed since the base', () => {
-    const snap = buildSnapshot([{ resource: 'backup', id: '1', data: { size: 10 } }]);
+    const snap = buildSnapshot([
+      { resource: 'backup', id: '1', data: { size: 10 } },
+    ]);
     const base = {
       'backup:1': snap.resources['backup:1'].hash,
       'backup:2': 'sha256:old',
     };
     const changes = diffSnapshot(base, snap);
-    expect(changes).toEqual([{ op: 'delete', resource: 'backup', localId: '2' }]);
+    expect(changes).toEqual([
+      { op: 'delete', resource: 'backup', localId: '2' },
+    ]);
   });
 
   it('emits upsert when a resource hash changed', () => {
-    const snap = buildSnapshot([{ resource: 'backup', id: '1', data: { size: 20 } }]);
+    const snap = buildSnapshot([
+      { resource: 'backup', id: '1', data: { size: 20 } },
+    ]);
     const base = { 'backup:1': 'sha256:different' };
     const changes = diffSnapshot(base, snap);
     expect(changes[0]).toMatchObject({ op: 'upsert', localId: '1' });
