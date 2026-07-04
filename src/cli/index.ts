@@ -14,6 +14,12 @@ import { migrateConfigCommand } from './commands/migrate-config';
 import { copydbCommand } from './commands/copydb';
 import { analyzeCommand } from './commands/analyze';
 import { crossMigrateCommand } from './commands/cross-migrate';
+import { loginCommand } from './commands/login';
+import { logoutCommand } from './commands/logout';
+import { whoamiCommand } from './commands/whoami';
+import { switchOrgCommand } from './commands/switch-org';
+import { syncCommand } from './commands/sync';
+import { openCommand } from './commands/open';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -128,6 +134,45 @@ program
   .description('Analyze a database structure (MongoDB or PostgreSQL)')
   .argument('<url>', 'Database connection URL (mongodb:// or postgresql://)')
   .action(analyzeCommand);
+
+program
+  .command('login')
+  .description('Authenticate the CLI with DBDock Cloud')
+  .option('--token <token>', 'Personal access token (dbd_...)')
+  .option('--web', 'Open the dashboard to create a token')
+  .option('--profile <name>', 'Account profile to log into')
+  .action(loginCommand);
+
+program
+  .command('logout')
+  .description('Remove stored DBDock Cloud credentials')
+  .option('--profile <name>', 'Account profile to log out of')
+  .action(logoutCommand);
+
+program
+  .command('whoami')
+  .description('Show the currently authenticated DBDock account')
+  .option('--profile <name>', 'Account profile to inspect')
+  .action(whoamiCommand);
+
+program
+  .command('switch-org')
+  .description('Set the active organization (forward-compatible)')
+  .option('--org <id>', 'Organization id')
+  .option('--profile <name>', 'Account profile')
+  .action(switchOrgCommand);
+
+program
+  .command('sync [action]')
+  .description('Synchronize this project with DBDock Cloud (status|push|pull)')
+  .option('--force', 'Overwrite cloud state with local (resolves conflicts)')
+  .action(syncCommand);
+
+program
+  .command('open')
+  .description('Open this project in the DBDock dashboard')
+  .option('--print', 'Print the dashboard URL instead of opening a browser')
+  .action(openCommand);
 
 program
   .command('migrate')

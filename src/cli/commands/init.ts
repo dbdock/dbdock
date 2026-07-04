@@ -16,6 +16,8 @@ import {
 } from 'fs';
 import { join } from 'path';
 import { getEngine } from '../../engines';
+import { loadSession } from '../../cloud/session';
+import { linkProject } from '../../cloud/sync-engine';
 
 const ENV_FILE = '.env';
 
@@ -585,9 +587,45 @@ export async function initCommand(): Promise<void> {
     logger.log(`  - ${ENV_FILE} has been added to .gitignore`);
   }
 
+  await offerCloudLink();
+
   logger.info('\nNext steps:');
   logger.log('  - Run "npx dbdock test" to verify your configuration');
   logger.log('  - Run "npx dbdock backup" to create your first backup');
+}
+
+async function offerCloudLink(): Promise<void> {
+  const session = loadSession();
+  if (!session.token) {
+    logger.info(
+      '\n☁️  Cloud sync: run "dbdock login" then "dbdock sync" to link this project to the DBDock dashboard.',
+    );
+    return;
+  }
+
+  try {
+    const { link } = (await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'link',
+        message: 'Link this project to DBDock Cloud for sync?',
+        default: true,
+      },
+    ])) as { link: boolean };
+
+    if (!link) {
+      return;
+    }
+
+    const { project, created } = await linkProject(process.cwd());
+    logger.success(
+      `${created ? 'Linked' : 'Attached'} to cloud project ${project.publicId}`,
+    );
+    logger.log('  - Wrote .dbdock/config.json (safe to commit)');
+    logger.log('  - Run "dbdock open" to view it in the dashboard');
+  } catch (err) {
+    logger.warn(`Cloud link skipped: ${(err as Error).message}`);
+  }
 }
 
 interface SecretsMap {
