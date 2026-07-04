@@ -4,35 +4,50 @@ import { join } from 'path';
 import { collectLocalResources } from './collectors';
 
 const FULL_CONFIG = {
-  postgres: {
+  database: {
+    type: 'postgresql',
     host: 'db.internal',
     port: 5432,
-    user: 'admin',
+    username: 'admin',
     password: 'PG_SECRET_PW',
     database: 'app',
   },
   storage: {
     provider: 's3',
-    bucket: 'backups',
-    region: 'us-east-1',
-    endpoint: 'https://s3.example',
-    accessKeyId: 'AKIA_SECRET',
-    secretAccessKey: 'SECRET_KEY_VALUE',
-    cloudinaryCloudName: 'cloud',
-    cloudinaryApiKey: 'CLOUD_KEY',
-    cloudinaryApiSecret: 'CLOUD_SECRET',
+    s3: {
+      bucket: 'backups',
+      region: 'us-east-1',
+      endpoint: 'https://s3.example',
+      accessKeyId: 'AKIA_SECRET',
+      secretAccessKey: 'SECRET_KEY_VALUE',
+    },
+    cloudinary: {
+      cloudName: 'cloud',
+      apiKey: 'CLOUD_KEY',
+      apiSecret: 'CLOUD_SECRET',
+      folder: 'f',
+    },
   },
-  encryption: { enabled: true, iterations: 100000, secret: 'ENCRYPTION_SECRET' },
-  schedule: { type: 'cron', expression: '0 2 * * *' },
-  pitr: { enabled: true, walIntervalSeconds: 60, retentionDays: 7 },
+  backup: {
+    format: 'custom',
+    compression: { enabled: true, level: 6 },
+    encryption: { enabled: true, key: 'ENCRYPTION_SECRET' },
+    retention: { enabled: true, maxBackups: 10 },
+    schedules: [{ name: 'nightly', cron: '0 2 * * *', enabled: true }],
+  },
   alerts: {
-    smtpHost: 'smtp.example',
-    smtpPort: 587,
-    from: 'ops@example',
-    to: ['a@example'],
-    smtpPass: 'SMTP_SECRET',
-    slackWebhook: 'https://hooks.example/SLACK_SECRET',
-    customWebhook: 'https://hook.example/CUSTOM_SECRET',
+    email: {
+      enabled: true,
+      smtp: {
+        host: 'smtp.example',
+        port: 587,
+        secure: false,
+        auth: { user: 'ops', pass: 'SMTP_SECRET' },
+      },
+      from: 'ops@example',
+      to: ['a@example'],
+    },
+    slack: { enabled: true, webhookUrl: 'https://hooks.example/SLACK_SECRET' },
   },
 };
 
@@ -45,18 +60,15 @@ const SECRET_VALUES = [
   'ENCRYPTION_SECRET',
   'SMTP_SECRET',
   'SLACK_SECRET',
-  'CUSTOM_SECRET',
 ];
 
 const SECRET_FIELDS = [
   'password',
   'accessKeyId',
   'secretAccessKey',
-  'cloudinaryApiKey',
-  'cloudinaryApiSecret',
-  'smtpPass',
-  'slackWebhook',
-  'customWebhook',
+  'apiKey',
+  'apiSecret',
+  'webhookUrl',
 ];
 
 describe('collectLocalResources', () => {
@@ -78,16 +90,15 @@ describe('collectLocalResources', () => {
     expect(collectLocalResources(dir)).toEqual([]);
   });
 
-  it('collects one resource per configured section', () => {
+  it('collects a resource per configured section (incl. one per schedule)', () => {
     writeConfig(FULL_CONFIG);
     const kinds = collectLocalResources(dir)
       .map((r) => r.resource)
       .sort();
     expect(kinds).toEqual([
       'alerts',
+      'backup',
       'connection',
-      'encryption',
-      'pitr',
       'schedule',
       'storage',
     ]);
@@ -118,30 +129,59 @@ describe('collectLocalResources', () => {
     });
   });
 
+  it('keeps non-secret storage metadata across nested providers', () => {
+    writeConfig(FULL_CONFIG);
+    const storage = collectLocalResources(dir).find(
+      (r) => r.resource === 'storage',
+    );
+    expect(storage?.data).toMatchObject({
+      provider: 's3',
+      bucket: 'backups',
+      region: 'us-east-1',
+      endpoint: 'https://s3.example',
+      cloudinaryCloudName: 'cloud',
+      cloudinaryFolder: 'f',
+    });
+  });
+
+  it('emits one schedule resource per configured schedule, keyed by name', () => {
+    writeConfig(FULL_CONFIG);
+    const schedule = collectLocalResources(dir).find(
+      (r) => r.resource === 'schedule',
+    );
+    expect(schedule?.id).toBe('nightly');
+    expect(schedule?.data).toEqual({
+      name: 'nightly',
+      cron: '0 2 * * *',
+      enabled: true,
+    });
+  });
+
   it('represents alert secrets as presence flags', () => {
     writeConfig(FULL_CONFIG);
     const alerts = collectLocalResources(dir).find(
       (r) => r.resource === 'alerts',
     );
     expect(alerts?.data).toMatchObject({
+      emailEnabled: true,
+      emailFrom: 'ops@example',
       smtpHost: 'smtp.example',
-      from: 'ops@example',
+      smtpPort: 587,
+      smtpSecure: false,
       hasSmtpAuth: true,
+      slackEnabled: true,
       hasSlackWebhook: true,
-      hasCustomWebhook: true,
     });
   });
 
   it('omits optional sections that are absent', () => {
     writeConfig({
-      postgres: { host: 'h', port: 5432, user: 'u', database: 'd' },
-      storage: { provider: 'local', bucket: 'b' },
-      encryption: { enabled: false },
-      pitr: { enabled: false, retentionDays: 1 },
+      database: { type: 'postgresql', host: 'h', port: 5432, database: 'd' },
+      storage: { provider: 'local', localPath: './backups' },
     });
     const kinds = collectLocalResources(dir)
       .map((r) => r.resource)
       .sort();
-    expect(kinds).toEqual(['connection', 'encryption', 'pitr', 'storage']);
+    expect(kinds).toEqual(['connection', 'storage']);
   });
 });
