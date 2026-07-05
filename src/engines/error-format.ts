@@ -17,7 +17,8 @@ export type ErrorCategory =
   | 'refused'
   | 'badDb'
   | 'permission'
-  | 'corrupt';
+  | 'corrupt'
+  | 'versionMismatch';
 
 export interface ErrorPattern {
   category: ErrorCategory;
@@ -78,12 +79,36 @@ function detailsBlock(ctx: EngineErrorContext, fields: DetailField[]): string {
   return lines.length ? `Connection details:\n${lines.join('\n')}\n\n` : '';
 }
 
+function versionMismatchMessage(raw: string): string {
+  const server = /server version:?\s*([0-9][0-9.]*)/i.exec(raw)?.[1];
+  const client =
+    /(?:pg_?dump|pg_?restore|client) version:?\s*([0-9][0-9.]*)/i.exec(
+      raw,
+    )?.[1];
+  const versions =
+    server || client
+      ? `  Server version:  ${server ?? 'unknown'}\n` +
+        `  Client version:  ${client ?? 'unknown'}\n\n`
+      : '';
+  return (
+    "This backup can't run because dbdock's database client is older than the server.\n\n" +
+    versions +
+    'A dump can only be taken by a client of the same or newer major version.\n\n' +
+    'Please:\n' +
+    '  • Update dbdock so it ships a client matching your server version, or\n' +
+    '  • Point DBDOCK_PG_BIN_DIR at a directory containing a matching client binary'
+  );
+}
+
 /** Turns a category + context into a complete, user-facing message. */
 export function renderError(
   category: ErrorCategory,
   ctx: EngineErrorContext,
+  raw = '',
 ): string {
   switch (category) {
+    case 'versionMismatch':
+      return versionMismatchMessage(raw);
     case 'auth':
       return (
         (ctx.username
@@ -158,7 +183,7 @@ function detailsSection(raw: string): string {
 export function explainError(opts: ExplainOptions): string {
   const { raw, patterns, ctx, tool, exitCode, mode = 'dump' } = opts;
   const category = classifyError(raw, patterns);
-  if (category) return renderError(category, ctx);
+  if (category) return renderError(category, ctx, raw);
 
   const trimmed = raw.trim();
   const withCode = exitCode !== undefined ? ` with exit code ${exitCode}` : '';

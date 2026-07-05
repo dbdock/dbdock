@@ -18,6 +18,7 @@ import { spawn } from 'child_process';
 import { Readable, Transform } from 'stream';
 import { formatFileSize } from '../utils/format';
 import { hasPgPassEntry } from '../config/pgpass.helper';
+import { resolvePgBin } from '../engines/pg-bin';
 import { nanoid } from 'nanoid';
 
 @Injectable()
@@ -234,7 +235,7 @@ export class BackupService {
       env.PGPASSWORD = pgConfig.password;
     }
 
-    const pgDump = spawn('pg_dump', args, { env });
+    const pgDump = spawn(resolvePgBin('pg_dump'), args, { env });
 
     const stderrChunks: Buffer[] = [];
     pgDump.stderr.on('data', (data: Buffer) => {

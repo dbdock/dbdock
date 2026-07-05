@@ -9,6 +9,7 @@ import {
 } from './engine.types';
 import { EngineErrorContext, ErrorPattern, explainError } from './error-format';
 import { assertValidDatabaseName } from './db-name.validator';
+import { resolvePgBin } from './pg-bin';
 
 const DEFAULT_PORT = 5432;
 const CLIENT_TOOL_HINT =
@@ -45,6 +46,10 @@ function buildEnv(conn: DbConnection): NodeJS.ProcessEnv {
 
 // Postgres/psql error vocabulary, most-specific first.
 const ERROR_PATTERNS: ErrorPattern[] = [
+  {
+    category: 'versionMismatch',
+    pattern: /server version mismatch|aborting because of server version/i,
+  },
   {
     category: 'auth',
     pattern:
@@ -112,7 +117,9 @@ export const postgresEngine: DatabaseEngine = {
       FORMAT_FLAG[format] || 'c',
       '--no-password',
     ];
-    const process = spawn('pg_dump', args, { env: buildEnv(conn) });
+    const process = spawn(resolvePgBin('pg_dump'), args, {
+      env: buildEnv(conn),
+    });
     return { process, stdout: process.stdout };
   },
 
@@ -134,7 +141,7 @@ export const postgresEngine: DatabaseEngine = {
       '--no-acl',
       '--no-password',
     ];
-    return spawn('pg_restore', args, { env: buildEnv(conn) });
+    return spawn(resolvePgBin('pg_restore'), args, { env: buildEnv(conn) });
   },
 
   testConnection(conn): Promise<void> {
@@ -152,7 +159,7 @@ export const postgresEngine: DatabaseEngine = {
       '--no-password',
     ];
     return new Promise<void>((resolve, reject) => {
-      const proc = spawn('psql', args, { env: buildEnv(conn) });
+      const proc = spawn(resolvePgBin('psql'), args, { env: buildEnv(conn) });
       let errorOutput = '';
       proc.stderr.on('data', (data: Buffer) => {
         const message = data.toString();
@@ -215,7 +222,13 @@ export const postgresEngine: DatabaseEngine = {
       queries.map(
         (query) =>
           new Promise<string>((resolve, reject) => {
-            const proc = spawn('psql', [...baseArgs, '-c', query], { env });
+            const proc = spawn(
+              resolvePgBin('psql'),
+              [...baseArgs, '-c', query],
+              {
+                env,
+              },
+            );
             let output = '';
             let errorOutput = '';
             proc.stdout.on('data', (data: Buffer) => {

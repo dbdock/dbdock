@@ -4,6 +4,7 @@ import inquirer from 'inquirer';
 import { spawn } from 'child_process';
 import { logger } from '../utils/logger';
 import { driverCopyCommand } from './driver-copy';
+import { resolvePgBin } from '../../engines/pg-bin';
 import { URL } from 'url';
 
 interface CopyDbOptions {
@@ -83,7 +84,7 @@ async function getTableCount(conn: DbConnectionInfo): Promise<number> {
     ];
 
     const env = { ...process.env, PGPASSWORD: conn.password };
-    const proc = spawn('psql', psqlArgs, { env });
+    const proc = spawn(resolvePgBin('psql'), psqlArgs, { env });
 
     let output = '';
     proc.stdout.on('data', (data: Buffer) => {
@@ -119,7 +120,7 @@ async function getDatabaseSize(conn: DbConnectionInfo): Promise<string> {
     ];
 
     const env = { ...process.env, PGPASSWORD: conn.password };
-    const proc = spawn('psql', psqlArgs, { env });
+    const proc = spawn(resolvePgBin('psql'), psqlArgs, { env });
 
     let output = '';
     proc.stdout.on('data', (data: Buffer) => {
@@ -158,7 +159,7 @@ async function testConnection(
     ];
 
     const env = { ...process.env, PGPASSWORD: conn.password };
-    const proc = spawn('psql', psqlArgs, { env });
+    const proc = spawn(resolvePgBin('psql'), psqlArgs, { env });
 
     let errorOutput = '';
     proc.stderr.on('data', (data: Buffer) => {
@@ -342,8 +343,12 @@ export async function copydbCommand(
 
   try {
     await new Promise<void>((resolve, reject) => {
-      const pgDump = spawn('pg_dump', pgDumpArgs, { env: sourceEnv });
-      const pgRestore = spawn('pg_restore', pgRestoreArgs, { env: targetEnv });
+      const pgDump = spawn(resolvePgBin('pg_dump'), pgDumpArgs, {
+        env: sourceEnv,
+      });
+      const pgRestore = spawn(resolvePgBin('pg_restore'), pgRestoreArgs, {
+        env: targetEnv,
+      });
 
       let dumpError = '';
       let restoreError = '';
