@@ -137,9 +137,9 @@ program
 
 program
   .command('login')
-  .description('Authenticate the CLI with DBDock Cloud')
-  .option('--token <token>', 'Personal access token (dbd_...)')
-  .option('--web', 'Open the dashboard to create a token')
+  .description('Sign in to DBDock Cloud in your browser')
+  .option('--token <token>', 'Use a token directly instead of the browser flow')
+  .option('--web', 'Sign in via the browser (default)')
   .option('--profile <name>', 'Account profile to log into')
   .action(loginCommand);
 

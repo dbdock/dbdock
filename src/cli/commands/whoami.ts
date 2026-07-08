@@ -11,7 +11,7 @@ interface WhoamiOptions {
 export async function whoamiCommand(
   options: WhoamiOptions = {},
 ): Promise<void> {
-  const session = loadSession(options.profile);
+  const session = await loadSession(options.profile);
 
   if (!session.token) {
     logger.error('Not logged in. Run `dbdock login`.');

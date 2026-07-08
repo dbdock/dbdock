@@ -38,7 +38,7 @@ export async function linkProject(
   cwd: string,
   opts: { name?: string } = {},
 ): Promise<{ project: RemoteProject; created: boolean }> {
-  const session = requireSession();
+  const session = await requireSession();
   const existing = readProjectConfig(cwd);
 
   if (existing?.projectId) {
@@ -85,7 +85,7 @@ export async function syncStatus(
 ): Promise<SyncStatusResult> {
   const projectId = requireProjectId(cwd);
   const state = readLocalState(cwd);
-  const session = loadSession();
+  const session = await loadSession();
 
   let remoteRevision: number | null = null;
   let remoteReachable = false;
@@ -169,7 +169,7 @@ export async function drain(
   opts: { projectId?: string; force?: boolean } = {},
 ): Promise<DrainResult> {
   const projectId = opts.projectId ?? requireProjectId(cwd);
-  const session = requireSession();
+  const session = await requireSession();
   let state = readLocalState(cwd);
 
   const result: DrainResult = {
@@ -263,7 +263,7 @@ export async function syncPull(
   cwd: string = process.cwd(),
 ): Promise<SyncPullResult> {
   const projectId = requireProjectId(cwd);
-  const session = requireSession();
+  const session = await requireSession();
   let state = readLocalState(cwd);
 
   const remote = await session.client.getState(projectId);

@@ -595,7 +595,7 @@ export async function initCommand(): Promise<void> {
 }
 
 async function offerCloudLink(): Promise<void> {
-  const session = loadSession();
+  const session = await loadSession();
   if (!session.token) {
     logger.info(
       '\n☁️  Cloud sync: run "dbdock login" then "dbdock sync" to link this project to the DBDock dashboard.',

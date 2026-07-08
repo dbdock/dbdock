@@ -1,5 +1,5 @@
 import { ApiClient } from './api-client';
-import { resolveToken } from './credentials';
+import { getFreshAccessToken } from './auth-token';
 import { getProfile, resolveProfileName } from './global-config';
 
 export interface Session {
@@ -11,11 +11,11 @@ export interface Session {
   profileName: string;
 }
 
-export function loadSession(profileName?: string): Session {
+export async function loadSession(profileName?: string): Promise<Session> {
   const name = resolveProfileName(profileName);
   const profile = getProfile(name);
   const account = profile.apiBaseUrl;
-  const token = resolveToken(account);
+  const token = await getFreshAccessToken(account);
   return {
     client: new ApiClient(profile.apiBaseUrl, token),
     apiBaseUrl: profile.apiBaseUrl,
@@ -33,8 +33,8 @@ export class NotAuthenticatedError extends Error {
   }
 }
 
-export function requireSession(profileName?: string): Session {
-  const session = loadSession(profileName);
+export async function requireSession(profileName?: string): Promise<Session> {
+  const session = await loadSession(profileName);
   if (!session.token) {
     throw new NotAuthenticatedError();
   }
