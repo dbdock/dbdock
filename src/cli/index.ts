@@ -20,6 +20,9 @@ import { whoamiCommand } from './commands/whoami';
 import { switchOrgCommand } from './commands/switch-org';
 import { syncCommand } from './commands/sync';
 import { openCommand } from './commands/open';
+import { accountCommand } from './commands/account';
+import { storageCommand } from './commands/storage';
+import { alertCommand } from './commands/alert';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -173,6 +176,24 @@ program
   .description('Open this project in the DBDock dashboard')
   .option('--print', 'Print the dashboard URL instead of opening a browser')
   .action(openCommand);
+
+program
+  .command('account')
+  .description('Show your DBDock plan and usage limits')
+  .option('--profile <name>', 'Account profile')
+  .action(accountCommand);
+
+program
+  .command('storage')
+  .description('Show DBDock managed storage usage and quota')
+  .option('--profile <name>', 'Account profile')
+  .action(storageCommand);
+
+program
+  .command('alert [action]')
+  .description('Manage cloud alerts and channels (list|add|rule|test|remove)')
+  .option('--profile <name>', 'Account profile')
+  .action(alertCommand);
 
 program
   .command('migrate')

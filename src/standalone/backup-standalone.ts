@@ -1,6 +1,7 @@
 import { CLIConfig } from '../cli/utils/config';
 import { Readable, Transform, PassThrough } from 'stream';
-import { createWriteStream, mkdirSync } from 'fs';
+import { createWriteStream, mkdirSync, mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { randomBytes } from 'crypto';
 import { createBrotliCompress } from 'zlib';
@@ -11,6 +12,12 @@ import { Upload } from '@aws-sdk/lib-storage';
 import { v2 as cloudinary } from 'cloudinary';
 import { formatFileSize } from '../utils/format';
 import { getEngine } from '../engines';
+import { ManagedStorageAdapter } from '../storage/adapters/managed.adapter';
+import { ManagedBroker } from '../cloud/types';
+
+export interface BackupStandaloneDeps {
+  managed?: ManagedBroker;
+}
 
 interface BackupResult {
   backupId: string;
@@ -29,6 +36,7 @@ export interface BackupProgressCallback {
 export async function createBackupStandalone(
   config: CLIConfig,
   callbacks?: BackupProgressCallback,
+  deps?: BackupStandaloneDeps,
 ): Promise<BackupResult> {
   const startTime = Date.now();
   const backupId = randomBytes(16).toString('hex');
@@ -317,6 +325,65 @@ export async function createBackupStandalone(
         }
       });
     });
+  } else if (config.storage.provider === 'managed') {
+    if (!deps?.managed) {
+      throw new Error(
+        'DBDock storage needs an active session. Run `dbdock login` and try again.',
+      );
+    }
+
+    const tempDir = mkdtempSync(join(tmpdir(), 'dbdock-managed-'));
+    const tempPath = join(tempDir, filename);
+    const writeStream = createWriteStream(tempPath, { mode: 0o600 });
+    stream.pipe(writeStream);
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        writeStream.on('finish', () => {
+          if (pgDumpExitCode !== null && pgDumpExitCode !== 0) {
+            reject(
+              new Error(
+                engine.formatDumpError(
+                  pgDumpExitCode,
+                  pgDumpErrorMessages,
+                  dbConfig,
+                ),
+              ),
+            );
+          } else if (pgDumpErrorMessages.length > 0 && totalSize === 0) {
+            reject(
+              new Error(
+                engine.formatDumpError(1, pgDumpErrorMessages, dbConfig),
+              ),
+            );
+          } else {
+            resolve();
+          }
+        });
+        writeStream.on('error', reject);
+        pgDumpProcess.on('error', (err) => {
+          reject(
+            new Error(
+              `Failed to start the database dump: ${err.message}\n\n${engine.clientToolHint}`,
+            ),
+          );
+        });
+      });
+
+      if (callbacks?.onStage) {
+        callbacks.onStage('Uploading to DBDock storage');
+      }
+
+      const adapter = new ManagedStorageAdapter(deps.managed);
+      const uploaded = await adapter.uploadFile(tempPath, totalSize, filename);
+      storageKey = uploaded.key;
+    } finally {
+      try {
+        rmSync(tempDir, { recursive: true, force: true });
+      } catch {
+        // best effort temp cleanup
+      }
+    }
   } else {
     throw new Error(
       `Storage provider ${config.storage.provider} not yet implemented in standalone mode`,
@@ -357,6 +424,13 @@ export async function createBackupStandalone(
       resource_type: 'raw',
       type: 'upload',
     });
+  } else if (config.storage.provider === 'managed' && deps?.managed) {
+    try {
+      const presigned = await deps.managed.presignDownload(storageKey);
+      downloadUrl = presigned.url;
+    } catch {
+      downloadUrl = undefined;
+    }
   }
 
   return {

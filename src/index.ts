@@ -21,6 +21,13 @@ export * from './storage/storage.interface';
 export { LocalStorageAdapter } from './storage/adapters/local.adapter';
 export { S3StorageAdapter } from './storage/adapters/s3.adapter';
 export { R2StorageAdapter } from './storage/adapters/r2.adapter';
+export { ManagedStorageAdapter } from './storage/adapters/managed.adapter';
+export type {
+  ManagedBroker,
+  ManagedObject,
+  ManagedPresignUpload,
+  ManagedPresignDownload,
+} from './cloud/types';
 
 export { WalArchiverService } from './wal/wal-archiver.service';
 export { RetentionService } from './wal/retention.service';
@@ -44,11 +51,15 @@ export * from './alerts/alert.types';
 export { DEFAULT_TEMPLATES } from './alerts/alert-templates';
 
 export { createBackupStandalone } from './standalone/backup-standalone';
-export type { BackupProgressCallback } from './standalone/backup-standalone';
+export type {
+  BackupProgressCallback,
+  BackupStandaloneDeps,
+} from './standalone/backup-standalone';
 export { restoreBackupStandalone } from './standalone/restore-standalone';
 export type {
   RestoreProgressCallback,
   RestoreStandaloneOptions,
+  RestoreStandaloneDeps,
 } from './standalone/restore-standalone';
 export { getEngine, SUPPORTED_ENGINE_TYPES } from './engines';
 export type { DatabaseEngine } from './engines';

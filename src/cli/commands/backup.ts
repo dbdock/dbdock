@@ -1,7 +1,11 @@
 import ora from 'ora';
 import { loadConfig, CLIConfig } from '../utils/config';
 import { logger } from '../utils/logger';
-import { createBackupStandalone } from '../../standalone/backup-standalone';
+import {
+  createBackupStandalone,
+  BackupStandaloneDeps,
+} from '../../standalone/backup-standalone';
+import { getManagedBroker } from '../utils/managed-broker';
 import { Logger } from '@nestjs/common';
 import { AlertService } from '../../alerts/alert.service';
 import { BackupType, BackupStatus } from '../../backup/backup.types';
@@ -58,23 +62,34 @@ export async function backupCommand(options: BackupOptions): Promise<void> {
 
     spinner.succeed('Configuration validated');
 
+    let deps: BackupStandaloneDeps | undefined;
+    if (mergedConfig.storage.provider === 'managed') {
+      spinner.start('Connecting to DBDock storage...');
+      deps = { managed: await getManagedBroker(mergedConfig) };
+      spinner.succeed('Connected to DBDock storage');
+    }
+
     spinner.start('Creating backup...');
     let totalBytes = 0;
     let currentStage = 'Dumping database';
 
-    const result = await createBackupStandalone(mergedConfig, {
-      onProgress: (bytes) => {
-        totalBytes = bytes;
-        const mb = (bytes / 1024 / 1024).toFixed(2);
-        spinner.text = `${currentStage} (${mb} MB)`;
+    const result = await createBackupStandalone(
+      mergedConfig,
+      {
+        onProgress: (bytes) => {
+          totalBytes = bytes;
+          const mb = (bytes / 1024 / 1024).toFixed(2);
+          spinner.text = `${currentStage} (${mb} MB)`;
+        },
+        onStage: (stage) => {
+          currentStage = stage;
+          const mb =
+            totalBytes > 0 ? (totalBytes / 1024 / 1024).toFixed(2) : '0.00';
+          spinner.text = `${stage} (${mb} MB)`;
+        },
       },
-      onStage: (stage) => {
-        currentStage = stage;
-        const mb =
-          totalBytes > 0 ? (totalBytes / 1024 / 1024).toFixed(2) : '0.00';
-        spinner.text = `${stage} (${mb} MB)`;
-      },
-    });
+      deps,
+    );
 
     spinner.succeed('Backup complete');
     console.log('');

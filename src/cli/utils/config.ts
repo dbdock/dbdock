@@ -52,6 +52,9 @@ export interface CLIConfig {
       apiSecret: string;
       folder?: string;
     };
+    managed?: {
+      profile?: string;
+    };
   };
   backup?: {
     format?: 'custom' | 'plain' | 'directory' | 'tar';

@@ -5,6 +5,8 @@ import { logger } from '../utils/logger';
 import { LocalStorageAdapter } from '../../storage/adapters/local.adapter';
 import { S3StorageAdapter } from '../../storage/adapters/s3.adapter';
 import { CloudinaryStorageAdapter } from '../../storage/adapters/cloudinary.adapter';
+import { ManagedStorageAdapter } from '../../storage/adapters/managed.adapter';
+import { getManagedBroker } from '../utils/managed-broker';
 import { IStorageAdapter } from '../../storage/storage.interface';
 import { SafeStorageAdapter } from '../../storage/safe-storage.adapter';
 import { resolveDeletionGuardPolicy } from '../../storage/deletion-guard';
@@ -71,51 +73,55 @@ export async function cleanupCommand(
     let adapter: IStorageAdapter;
     spinner.start('Connecting to storage...');
 
-    switch (config.storage.provider) {
-      case 'local':
-        adapter = new LocalStorageAdapter(
-          config.storage.local?.path || './backups',
-        );
-        break;
-      case 's3':
-      case 'r2':
-        if (
-          !config.storage.s3?.accessKeyId ||
-          !config.storage.s3?.secretAccessKey
-        ) {
-          spinner.fail('Storage credentials required');
+    if (config.storage.provider === 'managed') {
+      adapter = new ManagedStorageAdapter(await getManagedBroker(config));
+    } else {
+      switch (config.storage.provider) {
+        case 'local':
+          adapter = new LocalStorageAdapter(
+            config.storage.local?.path || './backups',
+          );
+          break;
+        case 's3':
+        case 'r2':
+          if (
+            !config.storage.s3?.accessKeyId ||
+            !config.storage.s3?.secretAccessKey
+          ) {
+            spinner.fail('Storage credentials required');
+            process.exit(1);
+          }
+          adapter = new S3StorageAdapter({
+            endpoint: config.storage.s3.endpoint,
+            bucket: config.storage.s3.bucket || '',
+            region: config.storage.s3.region,
+            accessKeyId: config.storage.s3.accessKeyId,
+            secretAccessKey: config.storage.s3.secretAccessKey,
+          });
+          break;
+        case 'cloudinary':
+          if (
+            !config.storage.cloudinary?.cloudName ||
+            !config.storage.cloudinary?.apiKey ||
+            !config.storage.cloudinary?.apiSecret
+          ) {
+            spinner.fail('Cloudinary credentials required');
+            process.exit(1);
+          }
+          adapter = new CloudinaryStorageAdapter({
+            cloudName: config.storage.cloudinary.cloudName,
+            apiKey: config.storage.cloudinary.apiKey,
+            apiSecret: config.storage.cloudinary.apiSecret,
+            folder: 'dbdock_backups',
+          });
+          break;
+        default:
+          spinner.fail(`Unknown storage provider: ${config.storage.provider}`);
           process.exit(1);
-        }
-        adapter = new S3StorageAdapter({
-          endpoint: config.storage.s3.endpoint,
-          bucket: config.storage.s3.bucket || '',
-          region: config.storage.s3.region,
-          accessKeyId: config.storage.s3.accessKeyId,
-          secretAccessKey: config.storage.s3.secretAccessKey,
-        });
-        break;
-      case 'cloudinary':
-        if (
-          !config.storage.cloudinary?.cloudName ||
-          !config.storage.cloudinary?.apiKey ||
-          !config.storage.cloudinary?.apiSecret
-        ) {
-          spinner.fail('Cloudinary credentials required');
-          process.exit(1);
-        }
-        adapter = new CloudinaryStorageAdapter({
-          cloudName: config.storage.cloudinary.cloudName,
-          apiKey: config.storage.cloudinary.apiKey,
-          apiSecret: config.storage.cloudinary.apiSecret,
-          folder: 'dbdock_backups',
-        });
-        break;
-      default:
-        spinner.fail(`Unknown storage provider: ${config.storage.provider}`);
-        process.exit(1);
-    }
+      }
 
-    adapter = new SafeStorageAdapter(adapter, resolveDeletionGuardPolicy());
+      adapter = new SafeStorageAdapter(adapter, resolveDeletionGuardPolicy());
+    }
 
     spinner.succeed('Connected to storage');
 

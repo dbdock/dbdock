@@ -16,6 +16,8 @@ import {
 } from 'fs';
 import { join } from 'path';
 import { loadSession } from '../../cloud/session';
+import { formatCloudError } from '../../cloud/errors';
+import { formatBytes } from './storage';
 import { linkProject } from '../../cloud/sync-engine';
 import { formatConnectionDisplay, ResolvedConnection } from './init-connection';
 import { resolveDatabaseConnection } from './init-connection.prompt';
@@ -26,7 +28,7 @@ Logger.overrideLogger(false);
 
 interface InitAnswers {
   backupFormat: string;
-  storageProvider: 'local' | 's3' | 'r2' | 'cloudinary';
+  storageProvider: 'managed' | 'local' | 's3' | 'r2' | 'cloudinary';
   localPath?: string;
   s3Bucket?: string;
   s3Region?: string;
@@ -107,12 +109,13 @@ export async function initCommand(): Promise<void> {
       name: 'storageProvider',
       message: 'Select storage provider:',
       choices: [
+        { name: 'DBDock Storage (recommended)', value: 'managed' },
         { name: 'Local Filesystem', value: 'local' },
         { name: 'AWS S3', value: 's3' },
         { name: 'Cloudflare R2 (S3-compatible)', value: 'r2' },
         { name: 'Cloudinary', value: 'cloudinary' },
       ],
-      default: 'local',
+      default: 'managed',
     },
     {
       type: 'input',
@@ -388,6 +391,14 @@ export async function initCommand(): Promise<void> {
     },
   ])) as InitAnswers;
 
+  if (answers.storageProvider === 'managed') {
+    const ready = await activateManagedStorage();
+    if (!ready) {
+      logger.warn('Setup cancelled. Nothing was written.');
+      return;
+    }
+  }
+
   const config: CLIConfig = {
     database: {
       type: connection.type,
@@ -421,6 +432,9 @@ export async function initCommand(): Promise<void> {
     },
     storage: {
       provider: answers.storageProvider,
+      ...(answers.storageProvider === 'managed' && {
+        managed: {},
+      }),
       ...(answers.storageProvider === 'local' &&
         answers.localPath && {
           local: { path: answers.localPath },
@@ -559,6 +573,37 @@ export async function initCommand(): Promise<void> {
   logger.log('  - Run "npx dbdock backup" to create your first backup');
 }
 
+async function activateManagedStorage(): Promise<boolean> {
+  const session = await loadSession();
+  if (!session.token) {
+    logger.error('DBDock Storage needs an account.');
+    logger.info('Run `dbdock login` first, then run `dbdock init` again.');
+    return false;
+  }
+
+  try {
+    const ent = await session.client.getEntitlements();
+    if (!ent.managedStorage) {
+      logger.error('DBDock Storage is a Pro & Business feature.');
+      logger.info('Upgrade at https://dbdock.xyz/billing, then try again.');
+      logger.info('You can also pick Local, S3, R2, or Cloudinary instead.');
+      return false;
+    }
+
+    await session.client.activateManagedStorage();
+    const usage = await session.client.getManagedUsage();
+
+    logger.success('DBDock Storage is ready.');
+    logger.info(
+      `Quota: ${formatBytes(usage.usedBytes)} of ${formatBytes(usage.quotaBytes)} used (${usage.quotaGb} GB plan)`,
+    );
+    return true;
+  } catch (err) {
+    logger.error(formatCloudError(err));
+    return false;
+  }
+}
+
 async function reviewAndConfirm(
   config: CLIConfig,
   connection: ResolvedConnection,
@@ -587,16 +632,20 @@ async function reviewAndConfirm(
   }
 
   const storage = config.storage;
-  const storageDetail =
-    storage.provider === 'local'
-      ? storage.local?.path || './backups'
-      : storage.bucket ||
-        storage.s3?.bucket ||
-        storage.cloudinary?.cloudName ||
-        '';
-  logger.log(
-    `  Storage:     ${storage.provider}${storageDetail ? `  (${storageDetail})` : ''}`,
-  );
+  if (storage.provider === 'managed') {
+    logger.log(`  Storage:     DBDock Storage`);
+  } else {
+    const storageDetail =
+      storage.provider === 'local'
+        ? storage.local?.path || './backups'
+        : storage.bucket ||
+          storage.s3?.bucket ||
+          storage.cloudinary?.cloudName ||
+          '';
+    logger.log(
+      `  Storage:     ${storage.provider}${storageDetail ? `  (${storageDetail})` : ''}`,
+    );
+  }
 
   const alertParts: string[] = [];
   if (config.alerts?.email) alertParts.push('email');

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   S3Client,
   GetObjectCommand,
+  PutObjectCommand,
   DeleteObjectCommand,
   CopyObjectCommand,
   ListObjectsV2Command,
@@ -220,6 +221,31 @@ export class S3StorageAdapter implements IStorageAdapter {
       const friendlyMessage = this.getFriendlyError(error);
       this.logger.error(
         `Failed to generate presigned URL for ${options.key}: ${friendlyMessage}`,
+      );
+      const cleanError = new Error(friendlyMessage);
+      cleanError.name = 'StorageConfigurationError';
+      throw cleanError;
+    }
+  }
+
+  async generatePresignedUploadUrl(
+    options: PresignedUrlOptions,
+  ): Promise<string> {
+    try {
+      const command = new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: options.key,
+      });
+
+      const url = await getSignedUrl(this.client, command, {
+        expiresIn: options.expiresIn || 3600,
+      });
+
+      return url;
+    } catch (error) {
+      const friendlyMessage = this.getFriendlyError(error);
+      this.logger.error(
+        `Failed to generate upload URL for ${options.key}: ${friendlyMessage}`,
       );
       const cleanError = new Error(friendlyMessage);
       cleanError.name = 'StorageConfigurationError';

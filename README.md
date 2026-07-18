@@ -118,6 +118,9 @@ See the [Quickstart guide](https://docs.dbdock.xyz/get-started/quickstart) for a
 | [`login`](https://docs.dbdock.xyz/cli/login) | Sign in to DBDock Cloud (also `logout`, `whoami`) |
 | [`sync`](https://docs.dbdock.xyz/cli/sync) | Sync this project with the cloud |
 | [`open`](https://docs.dbdock.xyz/cli/open) | Open this project in the dashboard |
+| [`account`](https://docs.dbdock.xyz/cli/account) | Show your plan and usage limits |
+| [`storage`](https://docs.dbdock.xyz/cli/storage) | Show DBDock managed storage usage and quota |
+| [`alert`](https://docs.dbdock.xyz/cli/alert) | Manage cloud alert channels and rules |
 
 Full reference at [docs.dbdock.xyz/cli/overview](https://docs.dbdock.xyz/cli/overview).
 
@@ -150,12 +153,24 @@ See [docs.dbdock.xyz/migration](https://docs.dbdock.xyz/migration/overview).
 
 DBDock writes backups to your storage of choice:
 
+- [DBDock Storage](https://docs.dbdock.xyz/storage/managed) — managed, zero setup, included with your plan (recommended)
 - [Local disk](https://docs.dbdock.xyz/storage/local) — fastest, single server
 - [AWS S3](https://docs.dbdock.xyz/storage/s3) — industry standard, any S3-compatible service
 - [Cloudflare R2](https://docs.dbdock.xyz/storage/r2) — zero egress fees
 - [Cloudinary](https://docs.dbdock.xyz/storage/cloudinary) — generous free tier
 
 Swap providers by changing one line in `dbdock.config.json`.
+
+### DBDock Storage (managed)
+
+Pick **DBDock Storage** in `dbdock init` and your backups upload straight to storage included with your plan — no bucket, no keys. It needs a signed-in account (`dbdock login`); uploads and downloads use short-lived presigned URLs, so your credentials never touch a bucket.
+
+```bash
+npx dbdock login       # one-time browser sign-in
+npx dbdock init        # choose "DBDock Storage (recommended)"
+npx dbdock backup      # uploads to your managed quota
+npx dbdock storage     # see how much space you've used
+```
 
 ## Programmatic usage (SDK)
 

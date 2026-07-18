@@ -1,5 +1,15 @@
 import {
+  Alert,
+  AlertEvent,
+  ChannelType,
+  Entitlements,
   Identity,
+  ManagedBroker,
+  ManagedObject,
+  ManagedPresignDownload,
+  ManagedPresignUpload,
+  ManagedStorageUsage,
+  NotificationChannel,
   RemoteProject,
   RemoteState,
   SyncChange,
@@ -43,7 +53,7 @@ interface RawResponse<T> {
 const MAX_ATTEMPTS = 4;
 const REQUEST_TIMEOUT_MS = 20_000;
 
-export class ApiClient {
+export class ApiClient implements ManagedBroker {
   private readonly baseUrl: string;
   private readonly token: string | null;
 
@@ -139,6 +149,140 @@ export class ApiClient {
       path: '/auth/me',
     });
     return res.data as Identity;
+  }
+
+  async getEntitlements(): Promise<Entitlements> {
+    const res = await this.request<Entitlements>({
+      method: 'GET',
+      path: '/billing/entitlements',
+    });
+    return res.data as Entitlements;
+  }
+
+  async getManagedUsage(): Promise<ManagedStorageUsage> {
+    const res = await this.request<ManagedStorageUsage>({
+      method: 'GET',
+      path: '/storage-configs/managed/usage',
+    });
+    return res.data as ManagedStorageUsage;
+  }
+
+  async activateManagedStorage(): Promise<{ id: string | null }> {
+    const res = await this.request<{ id: string | null }>({
+      method: 'POST',
+      path: '/storage-configs/managed/activate',
+      retry: false,
+    });
+    return res.data as { id: string | null };
+  }
+
+  async presignUpload(input: {
+    filename: string;
+    size: number;
+  }): Promise<ManagedPresignUpload> {
+    const res = await this.request<ManagedPresignUpload>({
+      method: 'POST',
+      path: '/managed-storage/presign-upload',
+      body: input,
+      retry: false,
+    });
+    return res.data as ManagedPresignUpload;
+  }
+
+  async presignDownload(key: string): Promise<ManagedPresignDownload> {
+    const res = await this.request<ManagedPresignDownload>({
+      method: 'POST',
+      path: '/managed-storage/presign-download',
+      body: { key },
+      retry: false,
+    });
+    return res.data as ManagedPresignDownload;
+  }
+
+  async listManagedObjects(): Promise<ManagedObject[]> {
+    const res = await this.request<ManagedObject[]>({
+      method: 'GET',
+      path: '/managed-storage/objects',
+    });
+    return (res.data as ManagedObject[]) ?? [];
+  }
+
+  async deleteManagedObject(key: string): Promise<void> {
+    await this.request({
+      method: 'POST',
+      path: '/managed-storage/delete',
+      body: { key },
+      retry: false,
+    });
+  }
+
+  async listChannels(): Promise<NotificationChannel[]> {
+    const res = await this.request<NotificationChannel[]>({
+      method: 'GET',
+      path: '/notification-channels',
+    });
+    return (res.data as NotificationChannel[]) ?? [];
+  }
+
+  async createChannel(body: {
+    name: string;
+    type: ChannelType;
+    config: Record<string, unknown>;
+  }): Promise<NotificationChannel> {
+    const res = await this.request<NotificationChannel>({
+      method: 'POST',
+      path: '/notification-channels',
+      body,
+      retry: false,
+    });
+    return res.data as NotificationChannel;
+  }
+
+  async deleteChannel(id: string): Promise<void> {
+    await this.request({
+      method: 'DELETE',
+      path: `/notification-channels/${id}`,
+      retry: false,
+    });
+  }
+
+  async testChannel(id: string): Promise<unknown> {
+    const res = await this.request({
+      method: 'POST',
+      path: `/notification-channels/${id}/test`,
+      retry: false,
+    });
+    return res.data;
+  }
+
+  async listAlerts(): Promise<Alert[]> {
+    const res = await this.request<Alert[]>({
+      method: 'GET',
+      path: '/alerts',
+    });
+    return (res.data as Alert[]) ?? [];
+  }
+
+  async createAlert(body: {
+    name: string;
+    event: AlertEvent;
+    channelId: string;
+  }): Promise<Alert> {
+    const res = await this.request<Alert>({
+      method: 'POST',
+      path: '/alerts',
+      body,
+      retry: false,
+    });
+    return res.data as Alert;
+  }
+
+  async deleteAlert(id: string): Promise<void> {
+    await this.request({
+      method: 'DELETE',
+      path: `/alerts/${id}`,
+      retry: false,
+    });
   }
 
   async createProject(

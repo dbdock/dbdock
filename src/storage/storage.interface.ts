@@ -52,6 +52,8 @@ export interface IStorageAdapter {
 
   generatePresignedUrl(options: PresignedUrlOptions): Promise<string>;
 
+  generatePresignedUploadUrl?(options: PresignedUrlOptions): Promise<string>;
+
   objectExists(key: string): Promise<boolean>;
 
   copyObject?(options: CopyOptions): Promise<void>;

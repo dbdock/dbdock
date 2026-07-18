@@ -22,8 +22,14 @@ import { BACKUP_HEADER_LENGTH, hasBackupHeader } from '../crypto/backup-format';
 import { S3StorageAdapter } from '../storage/adapters/s3.adapter';
 import { R2StorageAdapter } from '../storage/adapters/r2.adapter';
 import { CloudinaryStorageAdapter } from '../storage/adapters/cloudinary.adapter';
+import { ManagedStorageAdapter } from '../storage/adapters/managed.adapter';
 import { IStorageAdapter } from '../storage/storage.interface';
+import { ManagedBroker } from '../cloud/types';
 import { getEngine } from '../engines';
+
+export interface RestoreStandaloneDeps {
+  managed?: ManagedBroker;
+}
 
 export interface RestoreProgressCallback {
   onProgress?: (bytesProcessed: number) => void;
@@ -35,7 +41,18 @@ export interface RestoreStandaloneOptions {
   target?: CLIConfig['database'];
 }
 
-function buildRemoteAdapter(storage: CLIConfig['storage']): IStorageAdapter {
+function buildRemoteAdapter(
+  storage: CLIConfig['storage'],
+  deps?: RestoreStandaloneDeps,
+): IStorageAdapter {
+  if (storage.provider === 'managed') {
+    if (!deps?.managed) {
+      throw new Error(
+        'DBDock storage needs an active session. Run `dbdock login` and try again.',
+      );
+    }
+    return new ManagedStorageAdapter(deps.managed);
+  }
   switch (storage.provider) {
     case 's3': {
       if (!storage.s3?.accessKeyId || !storage.s3?.secretAccessKey) {
@@ -103,6 +120,7 @@ async function openSourceStream(
   storageKey: string,
   callbacks: RestoreProgressCallback | undefined,
   tempFiles: string[],
+  deps?: RestoreStandaloneDeps,
 ): Promise<{ path: string }> {
   if (callbacks?.onStage) {
     callbacks.onStage('Downloading backup');
@@ -125,7 +143,7 @@ async function openSourceStream(
     return { path: candidate };
   }
 
-  const adapter = buildRemoteAdapter(config.storage);
+  const adapter = buildRemoteAdapter(config.storage, deps);
   const tempDir = mkdtempSync(join(tmpdir(), 'dbdock-'));
   const tempFilePath = join(tempDir, 'restore.bin');
   tempFiles.push(tempFilePath);
@@ -155,6 +173,7 @@ export async function restoreBackupStandalone(
   config: CLIConfig,
   options: RestoreStandaloneOptions,
   callbacks?: RestoreProgressCallback,
+  deps?: RestoreStandaloneDeps,
 ): Promise<void> {
   const engine = getEngine(config.database.type);
   const target = options.target || config.database;
@@ -182,6 +201,7 @@ export async function restoreBackupStandalone(
       options.storageKey,
       callbacks,
       tempFiles,
+      deps,
     );
 
     let stream: Readable | Transform = createReadStream(source.path);

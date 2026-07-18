@@ -6,6 +6,8 @@ import { LocalStorageAdapter } from '../../storage/adapters/local.adapter';
 import { S3StorageAdapter } from '../../storage/adapters/s3.adapter';
 import { R2StorageAdapter } from '../../storage/adapters/r2.adapter';
 import { CloudinaryStorageAdapter } from '../../storage/adapters/cloudinary.adapter';
+import { ManagedStorageAdapter } from '../../storage/adapters/managed.adapter';
+import { getManagedBroker } from '../utils/managed-broker';
 import {
   IStorageAdapter,
   StorageObject,
@@ -32,76 +34,80 @@ export async function listCommand(
 
     let adapter: IStorageAdapter;
 
-    switch (config.storage.provider) {
-      case 'local':
-        adapter = new LocalStorageAdapter(
-          config.storage.local?.path || './backups',
-        );
-        break;
+    if (config.storage.provider === 'managed') {
+      adapter = new ManagedStorageAdapter(await getManagedBroker(config));
+    } else {
+      switch (config.storage.provider) {
+        case 'local':
+          adapter = new LocalStorageAdapter(
+            config.storage.local?.path || './backups',
+          );
+          break;
 
-      case 's3':
-        if (
-          !config.storage.s3?.accessKeyId ||
-          !config.storage.s3?.secretAccessKey
-        ) {
-          spinner.fail('S3 credentials are required');
-          process.exit(1);
-        }
-        adapter = new S3StorageAdapter({
-          endpoint: config.storage.s3.endpoint,
-          bucket: config.storage.s3.bucket || '',
-          accessKeyId: config.storage.s3.accessKeyId,
-          secretAccessKey: config.storage.s3.secretAccessKey,
-        });
-        break;
+        case 's3':
+          if (
+            !config.storage.s3?.accessKeyId ||
+            !config.storage.s3?.secretAccessKey
+          ) {
+            spinner.fail('S3 credentials are required');
+            process.exit(1);
+          }
+          adapter = new S3StorageAdapter({
+            endpoint: config.storage.s3.endpoint,
+            bucket: config.storage.s3.bucket || '',
+            accessKeyId: config.storage.s3.accessKeyId,
+            secretAccessKey: config.storage.s3.secretAccessKey,
+          });
+          break;
 
-      case 'r2': {
-        if (
-          !config.storage.s3?.accessKeyId ||
-          !config.storage.s3?.secretAccessKey
-        ) {
-          spinner.fail('R2 credentials are required');
-          process.exit(1);
+        case 'r2': {
+          if (
+            !config.storage.s3?.accessKeyId ||
+            !config.storage.s3?.secretAccessKey
+          ) {
+            spinner.fail('R2 credentials are required');
+            process.exit(1);
+          }
+          if (!config.storage.s3?.endpoint) {
+            spinner.fail('R2 endpoint is required');
+            process.exit(1);
+          }
+          const accountId =
+            config.storage.s3.endpoint.match(/https:\/\/([^.]+)/)?.[1] || '';
+          if (!accountId) {
+            spinner.fail('Invalid R2 endpoint format');
+            process.exit(1);
+          }
+          adapter = new R2StorageAdapter({
+            accountId,
+            bucket: config.storage.s3.bucket || '',
+            accessKeyId: config.storage.s3.accessKeyId,
+            secretAccessKey: config.storage.s3.secretAccessKey,
+          });
+          break;
         }
-        if (!config.storage.s3?.endpoint) {
-          spinner.fail('R2 endpoint is required');
+
+        case 'cloudinary':
+          if (
+            !config.storage.cloudinary?.cloudName ||
+            !config.storage.cloudinary?.apiKey ||
+            !config.storage.cloudinary?.apiSecret
+          ) {
+            spinner.fail('Cloudinary credentials are required');
+            process.exit(1);
+          }
+          adapter = new CloudinaryStorageAdapter({
+            cloudName: config.storage.cloudinary.cloudName,
+            apiKey: config.storage.cloudinary.apiKey,
+            apiSecret: config.storage.cloudinary.apiSecret,
+            folder: 'dbdock_backups',
+          });
+          break;
+
+        default:
+          spinner.fail(`Unknown storage provider: ${config.storage.provider}`);
           process.exit(1);
-        }
-        const accountId =
-          config.storage.s3.endpoint.match(/https:\/\/([^.]+)/)?.[1] || '';
-        if (!accountId) {
-          spinner.fail('Invalid R2 endpoint format');
-          process.exit(1);
-        }
-        adapter = new R2StorageAdapter({
-          accountId,
-          bucket: config.storage.s3.bucket || '',
-          accessKeyId: config.storage.s3.accessKeyId,
-          secretAccessKey: config.storage.s3.secretAccessKey,
-        });
-        break;
       }
-
-      case 'cloudinary':
-        if (
-          !config.storage.cloudinary?.cloudName ||
-          !config.storage.cloudinary?.apiKey ||
-          !config.storage.cloudinary?.apiSecret
-        ) {
-          spinner.fail('Cloudinary credentials are required');
-          process.exit(1);
-        }
-        adapter = new CloudinaryStorageAdapter({
-          cloudName: config.storage.cloudinary.cloudName,
-          apiKey: config.storage.cloudinary.apiKey,
-          apiSecret: config.storage.cloudinary.apiSecret,
-          folder: 'dbdock_backups',
-        });
-        break;
-
-      default:
-        spinner.fail(`Unknown storage provider: ${config.storage.provider}`);
-        process.exit(1);
     }
 
     spinner.start('Loading backups...');
