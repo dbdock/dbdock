@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { logger } from '../utils/logger';
 import { loadSession } from '../../cloud/session';
+import { DEFAULT_PROFILE } from '../../cloud/constants';
 
 Logger.overrideLogger(false);
 
@@ -27,8 +28,9 @@ export async function whoamiCommand(
     logger.info(
       `Org:     ${session.activeOrg || me.organizationId || '(none)'}`,
     );
-    logger.info(`Profile: ${session.profileName} → ${session.apiBaseUrl}`);
-    logger.info(`Token:   ${session.token.slice(0, 12)}…`);
+    if (session.profileName !== DEFAULT_PROFILE) {
+      logger.info(`Profile: ${session.profileName}`);
+    }
   } catch (err) {
     logger.error(`whoami failed: ${(err as Error).message}`);
     process.exitCode = 1;
