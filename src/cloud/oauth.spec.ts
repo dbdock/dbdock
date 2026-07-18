@@ -130,6 +130,25 @@ describe('cli oauth loopback login', () => {
     expect(tokens.expiresAt as number).toBeGreaterThan(Date.now());
   });
 
+  it('shuts the loopback server down after login (no lingering socket)', async () => {
+    let callbackPort = 0;
+    const open = async (authorizeUrl: string): Promise<void> => {
+      const u = new URL(authorizeUrl);
+      capturedChallenge = u.searchParams.get('code_challenge') ?? '';
+      const redirectUri = new URL(u.searchParams.get('redirect_uri') ?? '');
+      callbackPort = Number(redirectUri.port);
+      redirectUri.searchParams.set('code', 'auth-code');
+      redirectUri.searchParams.set('state', u.searchParams.get('state') ?? '');
+      await fetch(redirectUri.toString(), { keepalive: true });
+    };
+
+    await loopbackLogin({ appBaseUrl: base, open, timeoutMs: 5000 });
+
+    await expect(
+      fetch(`http://127.0.0.1:${callbackPort}/callback`),
+    ).rejects.toThrow();
+  });
+
   it('rejects on state mismatch (CSRF guard)', async () => {
     await expect(
       loopbackLogin({

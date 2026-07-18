@@ -1,5 +1,5 @@
 import { createServer, IncomingMessage, Server, ServerResponse } from 'http';
-import { AddressInfo } from 'net';
+import { AddressInfo, Socket } from 'net';
 import { createHash, randomBytes } from 'crypto';
 import { openUrl } from './open-url';
 import { defaultAppBaseUrl } from './constants';
@@ -139,11 +139,13 @@ function createCallbackServer(): Promise<CallbackServer> {
       deliver = resolve;
     });
 
+    const sockets = new Set<Socket>();
+
     const server: Server = createServer(
       (req: IncomingMessage, res: ServerResponse) => {
         const url = new URL(req.url ?? '/', 'http://127.0.0.1');
         if (url.pathname !== '/callback') {
-          res.writeHead(404);
+          res.writeHead(404, { Connection: 'close' });
           res.end('Not found');
           return;
         }
@@ -153,18 +155,39 @@ function createCallbackServer(): Promise<CallbackServer> {
           error: url.searchParams.get('error') ?? undefined,
         };
         const ok = Boolean(result.code) && !result.error;
-        res.writeHead(ok ? 200 : 400, { 'Content-Type': 'text/html' });
+        res.writeHead(ok ? 200 : 400, {
+          'Content-Type': 'text/html',
+          Connection: 'close',
+        });
         res.end(resultPage(ok, result.error));
         deliver(result);
       },
     );
+
+    server.on('connection', (socket: Socket) => {
+      sockets.add(socket);
+      socket.once('close', () => sockets.delete(socket));
+    });
+
+    let closed = false;
+    const close = (): void => {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      server.close();
+      for (const socket of sockets) {
+        socket.destroy();
+      }
+      sockets.clear();
+    };
 
     server.once('error', rejectServer);
     server.listen(0, '127.0.0.1', () => {
       const port = (server.address() as AddressInfo).port;
       resolveServer({
         port,
-        close: () => server.close(),
+        close,
         waitForResult: (timeoutMs: number) => {
           let timer: ReturnType<typeof setTimeout>;
           const timeout = new Promise<CallbackResult>((_, reject) => {
