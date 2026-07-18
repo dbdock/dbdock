@@ -15,22 +15,16 @@ import {
   mkdirSync,
 } from 'fs';
 import { join } from 'path';
-import { getEngine } from '../../engines';
 import { loadSession } from '../../cloud/session';
 import { linkProject } from '../../cloud/sync-engine';
+import { formatConnectionDisplay, ResolvedConnection } from './init-connection';
+import { resolveDatabaseConnection } from './init-connection.prompt';
 
 const ENV_FILE = '.env';
 
 Logger.overrideLogger(false);
 
 interface InitAnswers {
-  overwrite?: boolean;
-  dbType: string;
-  host: string;
-  port: number;
-  username: string;
-  password: string;
-  database: string;
   backupFormat: string;
   storageProvider: 'local' | 's3' | 'r2' | 'cloudinary';
   localPath?: string;
@@ -66,6 +60,14 @@ interface InitAnswers {
 export async function initCommand(): Promise<void> {
   logger.info('DBDock Setup Wizard');
 
+  if (!process.stdin.isTTY) {
+    logger.error(
+      'dbdock init is interactive and needs a terminal. Run it directly in your shell.',
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   if (configExists()) {
     const { overwrite } = (await inquirer.prompt([
       {
@@ -82,52 +84,9 @@ export async function initCommand(): Promise<void> {
     }
   }
 
+  const connection = await resolveDatabaseConnection();
+
   const answers = (await inquirer.prompt([
-    {
-      type: 'list',
-      name: 'dbType',
-      message: 'Select database type:',
-      choices: [
-        { name: 'PostgreSQL', value: 'postgres' },
-        { name: 'MySQL', value: 'mysql' },
-        { name: 'MariaDB', value: 'mariadb' },
-        { name: 'SQL Server', value: 'mssql' },
-        { name: 'Redis', value: 'redis' },
-        { name: 'CockroachDB (PostgreSQL-compatible)', value: 'cockroachdb' },
-        { name: 'Amazon Redshift (PostgreSQL-compatible)', value: 'redshift' },
-        { name: 'TimescaleDB (PostgreSQL-compatible)', value: 'timescaledb' },
-      ],
-      default: 'postgres',
-    },
-    {
-      type: 'input',
-      name: 'host',
-      message: 'Database host:',
-      default: 'localhost',
-    },
-    {
-      type: 'number',
-      name: 'port',
-      message: 'Database port:',
-      default: (ans: { dbType?: string }) => getEngine(ans.dbType).defaultPort,
-    },
-    {
-      type: 'input',
-      name: 'username',
-      message: 'Database username:',
-      default: (ans: { dbType?: string }) => getEngine(ans.dbType).defaultUser,
-    },
-    {
-      type: 'password',
-      name: 'password',
-      message:
-        'Database password (press Enter to skip and set via DBDOCK_DB_PASSWORD env var):',
-    },
-    {
-      type: 'input',
-      name: 'database',
-      message: 'Database name:',
-    },
     {
       type: 'list',
       name: 'backupFormat',
@@ -431,12 +390,12 @@ export async function initCommand(): Promise<void> {
 
   const config: CLIConfig = {
     database: {
-      type: answers.dbType,
-      host: answers.host,
-      port: answers.port,
-      username: answers.username,
-      password: answers.password,
-      database: answers.database,
+      type: connection.type,
+      host: connection.host,
+      port: connection.port,
+      username: connection.username,
+      password: connection.password,
+      database: connection.database,
     },
     backup: {
       format: answers.backupFormat as 'custom' | 'plain' | 'directory' | 'tar',
@@ -529,7 +488,13 @@ export async function initCommand(): Promise<void> {
     }),
   };
 
-  const secrets = extractSecrets(answers);
+  const confirmed = await reviewAndConfirm(config, connection);
+  if (!confirmed) {
+    logger.warn('Setup cancelled. Nothing was written.');
+    return;
+  }
+
+  const secrets = extractSecrets(answers, connection.password);
   const configWithoutSecrets = removeSecretsFromConfig(config);
 
   saveConfig(configWithoutSecrets);
@@ -594,6 +559,63 @@ export async function initCommand(): Promise<void> {
   logger.log('  - Run "npx dbdock backup" to create your first backup');
 }
 
+async function reviewAndConfirm(
+  config: CLIConfig,
+  connection: ResolvedConnection,
+): Promise<boolean> {
+  logger.info('\nReview your configuration:');
+  logger.log(
+    `  Database:    ${connection.type}  ${formatConnectionDisplay(connection, {
+      maskPassword: true,
+    })}`,
+  );
+  logger.log(`  Password:    ${connection.password ? 'set' : 'not set'}`);
+
+  const backup = config.backup;
+  const compression = backup?.compression?.enabled
+    ? `on (level ${backup.compression.level ?? 6})`
+    : 'off';
+  logger.log(
+    `  Backup:      ${backup?.format ?? 'custom'}, compression ${compression}, encryption ${
+      backup?.encryption?.enabled ? 'on' : 'off'
+    }`,
+  );
+  if (backup?.retention?.enabled) {
+    logger.log(
+      `  Retention:   keep ${backup.retention.maxBackups}, ${backup.retention.maxAgeDays} days, min ${backup.retention.minBackups}`,
+    );
+  }
+
+  const storage = config.storage;
+  const storageDetail =
+    storage.provider === 'local'
+      ? storage.local?.path || './backups'
+      : storage.bucket ||
+        storage.s3?.bucket ||
+        storage.cloudinary?.cloudName ||
+        '';
+  logger.log(
+    `  Storage:     ${storage.provider}${storageDetail ? `  (${storageDetail})` : ''}`,
+  );
+
+  const alertParts: string[] = [];
+  if (config.alerts?.email) alertParts.push('email');
+  if (config.alerts?.slack) alertParts.push('slack');
+  logger.log(
+    `  Alerts:      ${alertParts.length ? alertParts.join(', ') : 'none'}`,
+  );
+
+  const { save } = (await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'save',
+      message: 'Save this configuration?',
+      default: true,
+    },
+  ])) as { save: boolean };
+  return save;
+}
+
 async function offerCloudLink(): Promise<void> {
   const session = await loadSession();
   if (!session.token) {
@@ -632,11 +654,11 @@ interface SecretsMap {
   [key: string]: string;
 }
 
-function extractSecrets(answers: InitAnswers): SecretsMap {
+function extractSecrets(answers: InitAnswers, dbPassword: string): SecretsMap {
   const secrets: SecretsMap = {};
 
-  if (answers.password) {
-    secrets.DBDOCK_DB_PASSWORD = answers.password;
+  if (dbPassword) {
+    secrets.DBDOCK_DB_PASSWORD = dbPassword;
   }
 
   if (answers.s3AccessKey) {
