@@ -181,19 +181,23 @@ export async function drain(
     remoteRevision: null,
   };
 
+  let knownRemoteRevision: number | null = null;
+
   for (const job of dueJobs(state)) {
     result.attempted++;
     try {
-      const remote = await session.client.getState(projectId);
-      const remoteRevision = remote ? remote.revision : state.revision;
-      result.remoteRevision = remoteRevision;
+      if (knownRemoteRevision === null) {
+        const remote = await session.client.getState(projectId);
+        knownRemoteRevision = remote ? remote.revision : state.revision;
+      }
+      result.remoteRevision = knownRemoteRevision;
 
-      if (remoteRevision !== job.baseRevision && !opts.force) {
+      if (knownRemoteRevision !== job.baseRevision && !opts.force) {
         result.conflict = true;
         break;
       }
 
-      const baseRevision = opts.force ? remoteRevision : job.baseRevision;
+      const baseRevision = opts.force ? knownRemoteRevision : job.baseRevision;
       const applied = await session.client.pushSync(
         projectId,
         {
@@ -208,8 +212,10 @@ export async function drain(
       state = applyAck(state, applied);
       state = markAcked(state, job.id);
       writeLocalState(state, cwd);
+      knownRemoteRevision = applied.revision;
       result.acked++;
     } catch (err) {
+      knownRemoteRevision = null;
       if (err instanceof ApiError && err.status === 409) {
         result.conflict = true;
         break;
