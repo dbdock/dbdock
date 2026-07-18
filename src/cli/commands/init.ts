@@ -1,4 +1,5 @@
 import inquirer from 'inquirer';
+import ora from 'ora';
 import {
   saveConfig,
   configExists,
@@ -6,6 +7,7 @@ import {
   CLIConfig,
 } from '../utils/config';
 import { logger } from '../utils/logger';
+import { getEngine } from '../../engines';
 import { Logger } from '@nestjs/common';
 import {
   existsSync,
@@ -16,6 +18,7 @@ import {
 } from 'fs';
 import { join } from 'path';
 import { loadSession } from '../../cloud/session';
+import { ApiError } from '../../cloud/api-client';
 import { formatCloudError } from '../../cloud/errors';
 import { formatBytes } from './storage';
 import { linkProject } from '../../cloud/sync-engine';
@@ -87,6 +90,24 @@ export async function initCommand(): Promise<void> {
   }
 
   const connection = await resolveDatabaseConnection();
+
+  const reachable = await verifyConnection(connection);
+  if (!reachable) {
+    const { proceed } = (await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'proceed',
+        message: 'Continue setup anyway?',
+        default: false,
+      },
+    ])) as { proceed: boolean };
+    if (!proceed) {
+      logger.warn(
+        'Setup cancelled. Fix the connection and run `dbdock init` again.',
+      );
+      return;
+    }
+  }
 
   const answers = (await inquirer.prompt([
     {
@@ -573,6 +594,25 @@ export async function initCommand(): Promise<void> {
   logger.log('  - Run "npx dbdock backup" to create your first backup');
 }
 
+async function verifyConnection(
+  connection: ResolvedConnection,
+): Promise<boolean> {
+  if (connection.type === 'sqlite') {
+    return true;
+  }
+
+  const spinner = ora('Testing database connection...').start();
+  try {
+    await getEngine(connection.type).testConnection(connection);
+    spinner.succeed('Database connection successful');
+    return true;
+  } catch (err) {
+    spinner.fail('Could not connect to the database');
+    logger.error(err instanceof Error ? err.message : String(err));
+    return false;
+  }
+}
+
 async function activateManagedStorage(): Promise<boolean> {
   const session = await loadSession();
   if (!session.token) {
@@ -695,7 +735,13 @@ async function offerCloudLink(): Promise<void> {
     logger.log('  - Wrote .dbdock/config.json (safe to commit)');
     logger.log('  - Run "dbdock open" to view it in the dashboard');
   } catch (err) {
-    logger.warn(`Cloud link skipped: ${(err as Error).message}`);
+    if (err instanceof ApiError && err.status === 404) {
+      logger.warn(
+        'Cloud sync is not enabled on the server yet — skipping. Your local config was saved.',
+      );
+      return;
+    }
+    logger.warn(`Cloud link skipped: ${formatCloudError(err)}`);
   }
 }
 
