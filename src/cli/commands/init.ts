@@ -25,6 +25,11 @@ import { linkProject } from '../../cloud/sync-engine';
 import { formatConnectionDisplay, ResolvedConnection } from './init-connection';
 import { resolveDatabaseConnection } from './init-connection.prompt';
 import { mergeEnvContent } from '../utils/env-file';
+import { randomBytes } from 'crypto';
+import {
+  computeKeyFingerprint,
+  formatKeyFingerprint,
+} from '../../crypto/backup-format';
 
 const ENV_FILE = '.env';
 
@@ -43,6 +48,7 @@ interface InitAnswers {
   cloudinaryApiKey?: string;
   cloudinaryApiSecret?: string;
   enableEncryption: boolean;
+  encryptionKeyChoice?: 'generate' | 'manual' | 'env';
   encryptionKey?: string;
   enableCompression: boolean;
   compressionLevel?: string;
@@ -234,18 +240,37 @@ export async function initCommand(): Promise<void> {
     {
       type: 'confirm',
       name: 'enableEncryption',
-      message: 'Enable encryption?',
+      message:
+        'Enable encryption? (backups are encrypted with a key only you hold)',
       default: false,
     },
     {
-      type: 'input',
-      name: 'encryptionKey',
-      message:
-        'Encryption key (64-char hex, run: openssl rand -hex 32, press Enter to skip and set via DBDOCK_ENCRYPTION_SECRET env var):',
+      type: 'list',
+      name: 'encryptionKeyChoice',
+      message: 'How do you want to provide the encryption key?',
       when: (answers: InitAnswers) => answers.enableEncryption,
+      choices: [
+        {
+          name: 'Generate a secure key for me (recommended)',
+          value: 'generate',
+        },
+        { name: 'Paste my own 64-char hex key', value: 'manual' },
+        {
+          name: 'Set it later via the DBDOCK_ENCRYPTION_SECRET env var',
+          value: 'env',
+        },
+      ],
+      default: 'generate',
+    },
+    {
+      type: 'password',
+      name: 'encryptionKey',
+      mask: '*',
+      message: 'Paste your encryption key (64-char hex):',
+      when: (answers: InitAnswers) =>
+        answers.enableEncryption && answers.encryptionKeyChoice === 'manual',
       validate: (input: string) => {
-        if (!input.trim()) return true;
-        if (!/^[0-9a-fA-F]{64}$/.test(input)) {
+        if (!/^[0-9a-fA-F]{64}$/.test(input.trim())) {
           return 'Encryption key must be a 64-character hexadecimal string. Generate with: openssl rand -hex 32';
         }
         return true;
@@ -412,6 +437,8 @@ export async function initCommand(): Promise<void> {
       },
     },
   ])) as InitAnswers;
+
+  await finalizeEncryptionKey(answers);
 
   if (answers.storageProvider === 'managed') {
     const ready = await activateManagedStorage();
@@ -743,6 +770,67 @@ async function offerCloudLink(): Promise<void> {
       return;
     }
     logger.warn(`Cloud link skipped: ${formatCloudError(err)}`);
+  }
+}
+
+function printEncryptionWarning(): void {
+  logger.warn('\n⚠️  Read this before continuing — encryption key safety');
+  logger.log(
+    '  • This key is the ONLY way to decrypt your backups.\n' +
+      '  • DBDock cannot recover it for you. There is no reset, no backdoor.\n' +
+      '  • If you lose it, every encrypted backup is permanently unreadable.\n' +
+      '  • Store it in a password manager or secret vault, separate from the backups themselves.',
+  );
+}
+
+async function finalizeEncryptionKey(answers: InitAnswers): Promise<void> {
+  if (!answers.enableEncryption) {
+    return;
+  }
+
+  printEncryptionWarning();
+
+  if (answers.encryptionKeyChoice === 'env') {
+    answers.encryptionKey = undefined;
+    logger.info(
+      '\nRemember to set DBDOCK_ENCRYPTION_SECRET before your first encrypted backup.',
+    );
+    return;
+  }
+
+  if (answers.encryptionKeyChoice === 'generate') {
+    answers.encryptionKey = randomBytes(32).toString('hex');
+    logger.info('\nGenerated encryption key (shown once — copy it now):');
+    logger.log(`\n  ${answers.encryptionKey}\n`);
+  }
+
+  if (answers.encryptionKey) {
+    const fingerprint = formatKeyFingerprint(
+      computeKeyFingerprint(Buffer.from(answers.encryptionKey, 'hex')),
+    );
+    logger.log(`  Key fingerprint: ${fingerprint}`);
+
+    let acknowledged = false;
+    while (!acknowledged) {
+      const { saved } = (await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'saved',
+          message:
+            'I have saved this key somewhere safe and understand it cannot be recovered:',
+          default: false,
+        },
+      ])) as { saved: boolean };
+      acknowledged = saved;
+      if (!acknowledged) {
+        logger.warn(
+          'Please save the key before continuing — without it your backups are unrecoverable.',
+        );
+        if (answers.encryptionKeyChoice === 'generate') {
+          logger.log(`\n  ${answers.encryptionKey}\n`);
+        }
+      }
+    }
   }
 }
 

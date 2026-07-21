@@ -15,10 +15,19 @@ import { tmpdir } from 'os';
 import { dirname, join, resolve, sep } from 'path';
 import { createBrotliDecompress } from 'zlib';
 import {
+  WRONG_KEY_MESSAGE,
   createBackupDecryptStream,
   createLegacyDecryptStream,
 } from '../crypto/backup-crypto';
-import { BACKUP_HEADER_LENGTH, hasBackupHeader } from '../crypto/backup-format';
+import {
+  BACKUP_HEADER_LENGTH,
+  BACKUP_VERSION_GCM_FP,
+  KEY_FINGERPRINT_LENGTH,
+  computeKeyFingerprint,
+  formatKeyFingerprint,
+  hasBackupHeader,
+  readBackupVersion,
+} from '../crypto/backup-format';
 import { S3StorageAdapter } from '../storage/adapters/s3.adapter';
 import { R2StorageAdapter } from '../storage/adapters/r2.adapter';
 import { CloudinaryStorageAdapter } from '../storage/adapters/cloudinary.adapter';
@@ -104,11 +113,14 @@ function buildRemoteAdapter(
   }
 }
 
-function peekBackupHeader(filePath: string): Buffer {
+function peekBackupHeader(
+  filePath: string,
+  length: number = BACKUP_HEADER_LENGTH,
+): Buffer {
   const fd = openSync(filePath, 'r');
   try {
-    const buf = Buffer.alloc(BACKUP_HEADER_LENGTH);
-    const bytesRead = readSync(fd, buf, 0, BACKUP_HEADER_LENGTH, 0);
+    const buf = Buffer.alloc(length);
+    const bytesRead = readSync(fd, buf, 0, length, 0);
     return buf.subarray(0, bytesRead);
   } finally {
     closeSync(fd);
@@ -216,7 +228,25 @@ export async function restoreBackupStandalone(
           `Invalid encryption key length: ${keyBuffer.length} bytes (expected 32 bytes)`,
         );
       }
-      const isVersioned = hasBackupHeader(peekBackupHeader(source.path));
+      const headerPrefix = peekBackupHeader(
+        source.path,
+        BACKUP_HEADER_LENGTH + KEY_FINGERPRINT_LENGTH,
+      );
+      const isVersioned = hasBackupHeader(headerPrefix);
+      if (readBackupVersion(headerPrefix) === BACKUP_VERSION_GCM_FP) {
+        const storedFingerprint = headerPrefix.subarray(
+          BACKUP_HEADER_LENGTH,
+          BACKUP_HEADER_LENGTH + KEY_FINGERPRINT_LENGTH,
+        );
+        const providedFingerprint = computeKeyFingerprint(keyBuffer);
+        if (!storedFingerprint.equals(providedFingerprint)) {
+          throw new Error(
+            `${WRONG_KEY_MESSAGE}\n\n` +
+              `  Backup was created with key fingerprint: ${formatKeyFingerprint(storedFingerprint)}\n` +
+              `  Your configured key fingerprint:         ${formatKeyFingerprint(providedFingerprint)}`,
+          );
+        }
+      }
       const decipher = isVersioned
         ? createBackupDecryptStream(keyBuffer)
         : createLegacyDecryptStream(keyBuffer);

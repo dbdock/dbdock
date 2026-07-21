@@ -64,3 +64,7 @@ export type {
 export { getEngine, SUPPORTED_ENGINE_TYPES } from './engines';
 export type { DatabaseEngine } from './engines';
 export type { CLIConfig } from './cli/utils/config';
+export {
+  computeKeyFingerprint,
+  formatKeyFingerprint,
+} from './crypto/backup-format';

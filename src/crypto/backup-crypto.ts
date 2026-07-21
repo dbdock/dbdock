@@ -6,7 +6,14 @@ import {
   type DecipherGCM,
 } from 'crypto';
 import { Transform, TransformCallback } from 'stream';
-import { BACKUP_HEADER } from './backup-format';
+import {
+  BACKUP_HEADER_FP,
+  BACKUP_HEADER_LENGTH,
+  BACKUP_MAGIC,
+  BACKUP_VERSION_GCM_FP,
+  KEY_FINGERPRINT_LENGTH,
+  computeKeyFingerprint,
+} from './backup-format';
 
 const ALGORITHM = 'aes-256-gcm';
 const KEY_LENGTH = 32;
@@ -15,6 +22,11 @@ const SALT_LENGTH = 64;
 const TAG_LENGTH = 16;
 const PBKDF2_ITERATIONS = 100000;
 const LEGACY_ALGORITHM = 'aes-256-cbc';
+
+export const WRONG_KEY_MESSAGE =
+  'Decryption failed: the configured encryption key does not match the key used to create this backup. ' +
+  'Restore this backup with the exact key it was created with. ' +
+  'If that key is lost, this backup cannot be recovered.';
 
 function deriveKey(keyMaterial: Buffer, salt: Buffer): Buffer {
   return pbkdf2Sync(keyMaterial, salt, PBKDF2_ITERATIONS, KEY_LENGTH, 'sha512');
@@ -25,6 +37,12 @@ export function createBackupEncryptStream(keyMaterial: Buffer): Transform {
   const iv = randomBytes(IV_LENGTH);
   const key = deriveKey(keyMaterial, salt);
   const cipher = createCipheriv(ALGORITHM, key, iv);
+  const header = Buffer.concat([
+    BACKUP_HEADER_FP,
+    computeKeyFingerprint(keyMaterial),
+    salt,
+    iv,
+  ]);
 
   let headerWritten = false;
 
@@ -36,7 +54,7 @@ export function createBackupEncryptStream(keyMaterial: Buffer): Transform {
     ) {
       try {
         if (!headerWritten) {
-          this.push(Buffer.concat([BACKUP_HEADER, salt, iv]));
+          this.push(header);
           headerWritten = true;
         }
         this.push(cipher.update(chunk));
@@ -48,7 +66,7 @@ export function createBackupEncryptStream(keyMaterial: Buffer): Transform {
     flush(callback: TransformCallback) {
       try {
         if (!headerWritten) {
-          this.push(Buffer.concat([BACKUP_HEADER, salt, iv]));
+          this.push(header);
           headerWritten = true;
         }
         this.push(cipher.final());
@@ -66,7 +84,6 @@ export function createBackupDecryptStream(keyMaterial: Buffer): Transform {
   let headerParsed = false;
   let decipher: DecipherGCM | null = null;
   let buffer = Buffer.alloc(0);
-  const headerTotal = BACKUP_HEADER.length + SALT_LENGTH + IV_LENGTH;
 
   return new Transform({
     transform(
@@ -77,18 +94,35 @@ export function createBackupDecryptStream(keyMaterial: Buffer): Transform {
       try {
         if (!headerParsed) {
           headerBuffer = Buffer.concat([headerBuffer, chunk]);
+          if (headerBuffer.length < BACKUP_HEADER_LENGTH) {
+            callback();
+            return;
+          }
+          const version = headerBuffer[BACKUP_MAGIC.length];
+          const fingerprintLength =
+            version === BACKUP_VERSION_GCM_FP ? KEY_FINGERPRINT_LENGTH : 0;
+          const headerTotal =
+            BACKUP_HEADER_LENGTH + fingerprintLength + SALT_LENGTH + IV_LENGTH;
           if (headerBuffer.length < headerTotal) {
             callback();
             return;
           }
-          const salt = headerBuffer.subarray(
-            BACKUP_HEADER.length,
-            BACKUP_HEADER.length + SALT_LENGTH,
-          );
-          const iv = headerBuffer.subarray(
-            BACKUP_HEADER.length + SALT_LENGTH,
-            headerTotal,
-          );
+          let offset = BACKUP_HEADER_LENGTH;
+          if (fingerprintLength > 0) {
+            const storedFingerprint = headerBuffer.subarray(
+              offset,
+              offset + fingerprintLength,
+            );
+            if (!storedFingerprint.equals(computeKeyFingerprint(keyMaterial))) {
+              callback(new Error(WRONG_KEY_MESSAGE));
+              return;
+            }
+            offset += fingerprintLength;
+          }
+          const salt = headerBuffer.subarray(offset, offset + SALT_LENGTH);
+          offset += SALT_LENGTH;
+          const iv = headerBuffer.subarray(offset, offset + IV_LENGTH);
+          offset += IV_LENGTH;
           const key = deriveKey(keyMaterial, salt);
           decipher = createDecipheriv(ALGORITHM, key, iv);
           buffer = headerBuffer.subarray(headerTotal);

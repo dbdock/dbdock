@@ -28,12 +28,18 @@ import {
   readSync,
 } from 'fs';
 import {
+  WRONG_KEY_MESSAGE,
   createBackupDecryptStream,
   createLegacyDecryptStream,
 } from '../../crypto/backup-crypto';
 import {
   BACKUP_HEADER_LENGTH,
+  BACKUP_VERSION_GCM_FP,
+  KEY_FINGERPRINT_LENGTH,
+  computeKeyFingerprint,
+  formatKeyFingerprint,
   hasBackupHeader,
+  readBackupVersion,
 } from '../../crypto/backup-format';
 import { Logger } from '@nestjs/common';
 import { MultiStepProgress } from '../utils/progress';
@@ -63,11 +69,14 @@ interface ConfirmAnswer {
   confirm: boolean;
 }
 
-function peekBackupHeader(filePath: string): Buffer {
+function peekBackupHeader(
+  filePath: string,
+  length: number = BACKUP_HEADER_LENGTH,
+): Buffer {
   const fd = openSync(filePath, 'r');
   try {
-    const buf = Buffer.alloc(BACKUP_HEADER_LENGTH);
-    const bytesRead = readSync(fd, buf, 0, BACKUP_HEADER_LENGTH, 0);
+    const buf = Buffer.alloc(length);
+    const bytesRead = readSync(fd, buf, 0, length, 0);
     return buf.subarray(0, bytesRead);
   } finally {
     closeSync(fd);
@@ -594,10 +603,30 @@ export async function restoreCommand(): Promise<void> {
         process.exit(1);
       }
 
-      const isVersioned =
-        backupFilePath !== null &&
-        existsSync(backupFilePath) &&
-        hasBackupHeader(peekBackupHeader(backupFilePath));
+      const headerPrefix =
+        backupFilePath !== null && existsSync(backupFilePath)
+          ? peekBackupHeader(
+              backupFilePath,
+              BACKUP_HEADER_LENGTH + KEY_FINGERPRINT_LENGTH,
+            )
+          : Buffer.alloc(0);
+      const isVersioned = hasBackupHeader(headerPrefix);
+      if (readBackupVersion(headerPrefix) === BACKUP_VERSION_GCM_FP) {
+        const storedFingerprint = headerPrefix.subarray(
+          BACKUP_HEADER_LENGTH,
+          BACKUP_HEADER_LENGTH + KEY_FINGERPRINT_LENGTH,
+        );
+        const providedFingerprint = computeKeyFingerprint(keyBuffer);
+        if (!storedFingerprint.equals(providedFingerprint)) {
+          restoreSteps.fail(WRONG_KEY_MESSAGE);
+          logger.error(
+            `\n  Backup was created with key fingerprint: ${formatKeyFingerprint(storedFingerprint)}\n` +
+              `  Your configured key fingerprint:         ${formatKeyFingerprint(providedFingerprint)}`,
+          );
+          cleanupTemp();
+          process.exit(1);
+        }
+      }
       const decipher = isVersioned
         ? createBackupDecryptStream(keyBuffer)
         : createLegacyDecryptStream(keyBuffer);
