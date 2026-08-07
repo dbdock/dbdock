@@ -57,6 +57,16 @@ const SEARCH_ROOTS: PgRoot[] = [
         : null;
     },
   },
+  {
+    // EDB's macOS installer.
+    dir: '/Library/PostgreSQL',
+    match(entry) {
+      const major = parseInt(entry, 10);
+      return Number.isNaN(major)
+        ? null
+        : { major, binDir: join('/Library/PostgreSQL', entry, 'bin') };
+    },
+  },
 ];
 
 function probeMajor(bin: string): number | null {
@@ -102,28 +112,45 @@ function candidatePaths(tool: PgTool): string[] {
   return [...new Set(paths)];
 }
 
-const cache = new Map<PgTool, string>();
+export interface PgClientInfo {
+  /** Absolute path, or the bare tool name when only PATH lookup is possible. */
+  path: string;
+  /** Major version reported by `--version`; null when it could not be probed. */
+  major: number | null;
+}
 
-export function resolvePgBin(tool: PgTool): string {
+const cache = new Map<PgTool, PgClientInfo>();
+
+/**
+ * Resolves the client binary *and* reports which major version it is, so
+ * callers can explain a version mismatch instead of only failing on one.
+ *
+ * The highest major wins: a host with both 17 and 18 installed dumps an 18
+ * server correctly even when 17 comes first on PATH.
+ */
+export function describePgClient(tool: PgTool): PgClientInfo {
   const cached = cache.get(tool);
   if (cached) return cached;
 
   const explicit = process.env[TOOL_ENV[tool]];
   if (explicit) {
-    cache.set(tool, explicit);
-    return explicit;
+    const info: PgClientInfo = { path: explicit, major: probeMajor(explicit) };
+    cache.set(tool, info);
+    return info;
   }
 
-  let best: string = tool;
-  let bestMajor = -1;
+  let best: PgClientInfo = { path: tool, major: null };
   for (const path of candidatePaths(tool)) {
     const major = probeMajor(path);
-    if (major !== null && major > bestMajor) {
-      bestMajor = major;
-      best = path;
+    if (major !== null && (best.major === null || major > best.major)) {
+      best = { path, major };
     }
   }
 
   cache.set(tool, best);
   return best;
+}
+
+export function resolvePgBin(tool: PgTool): string {
+  return describePgClient(tool).path;
 }

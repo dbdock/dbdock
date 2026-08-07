@@ -7,9 +7,14 @@ import {
   DumpHandle,
   DumpSpawnOptions,
 } from './engine.types';
-import { EngineErrorContext, ErrorPattern, explainError } from './error-format';
+import {
+  EngineErrorContext,
+  ErrorPattern,
+  MismatchVersions,
+  explainError,
+} from './error-format';
 import { assertValidDatabaseName } from './db-name.validator';
-import { resolvePgBin } from './pg-bin';
+import { describePgClient, resolvePgBin } from './pg-bin';
 
 const DEFAULT_PORT = 5432;
 const CLIENT_TOOL_HINT =
@@ -63,6 +68,43 @@ const ERROR_PATTERNS: ErrorPattern[] = [
   },
   { category: 'corrupt', pattern: /corrupt|invalid backup/i },
 ];
+
+/**
+ * dbdock does not bundle libpq — it runs whatever client tools the host has.
+ * So a version mismatch is fixed by installing the client for the *server's*
+ * major version; naming that major (and the client dbdock actually picked)
+ * turns a dead end into a copy-pasteable command.
+ */
+function pgVersionRemedy({ server }: MismatchVersions): string {
+  const major = Number(/^(\d+)/.exec(server ?? '')?.[1]);
+  const found = describePgClient('pg_dump');
+  const using =
+    found.major !== null
+      ? `\n\ndbdock is currently using ${found.path} (${found.major}.x).`
+      : '';
+
+  if (!Number.isFinite(major)) {
+    return (
+      'dbdock runs the PostgreSQL client tools installed on this machine.\n' +
+      'Install a client at or above your server major version, or point\n' +
+      'DBDOCK_PG_BIN_DIR at a directory that already has one.' +
+      using
+    );
+  }
+
+  return (
+    `dbdock runs the PostgreSQL client tools installed on this machine, so\n` +
+    `install the ${major} client and dbdock will pick it up automatically:\n\n` +
+    `  Debian/Ubuntu:  sudo apt-get install postgresql-client-${major}\n` +
+    `                  (needs the PGDG repo: https://www.postgresql.org/download/linux/ubuntu/)\n` +
+    `  RHEL/Fedora:    sudo dnf install postgresql${major}\n` +
+    `  macOS:          brew install postgresql@${major}\n` +
+    `  Windows:        https://www.postgresql.org/download/windows/\n\n` +
+    `Already installed elsewhere? Point dbdock at it:\n` +
+    `  export DBDOCK_PG_BIN_DIR=/usr/lib/postgresql/${major}/bin` +
+    using
+  );
+}
 
 // `conn` is omitted for restore errors, which carry no connection context.
 function errorContext(conn?: DbConnection): EngineErrorContext {
@@ -181,6 +223,7 @@ export const postgresEngine: DatabaseEngine = {
               tool: 'psql',
               exitCode: code ?? undefined,
               mode: 'connect',
+              remedy: pgVersionRemedy,
             }),
           ),
         );
@@ -262,6 +305,7 @@ export const postgresEngine: DatabaseEngine = {
       tool: 'pg_dump',
       exitCode,
       mode: 'dump',
+      remedy: pgVersionRemedy,
     });
   },
 

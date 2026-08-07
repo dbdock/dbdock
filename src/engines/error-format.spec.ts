@@ -34,6 +34,37 @@ describe('version mismatch errors', () => {
     expect(message).not.toContain('exit code');
   });
 
+  it('names the server major in the install instructions', () => {
+    const message = postgresEngine.formatDumpError(1, [PG_VERSION_MISMATCH], {
+      host: 'db.example.com',
+      port: 6003,
+      database: 'pdfx',
+      username: 'postgres',
+    } as never);
+
+    expect(message).toContain('postgresql-client-18');
+    expect(message).toContain('brew install postgresql@18');
+    expect(message).toContain('DBDOCK_PG_BIN_DIR=/usr/lib/postgresql/18/bin');
+    expect(message).not.toContain('ships a client');
+  });
+
+  it('falls back to generic advice when the server version is unparseable', () => {
+    const message = postgresEngine.formatDumpError(
+      1,
+      ['pg_dump: error: aborting because of server version mismatch'],
+      {
+        host: 'db.example.com',
+        port: 6003,
+        database: 'pdfx',
+        username: 'postgres',
+      } as never,
+    );
+
+    expect(message).toContain('older than the server');
+    expect(message).toContain('DBDOCK_PG_BIN_DIR');
+    expect(message).not.toContain('postgresql-client-NaN');
+  });
+
   it('does not misclassify an ordinary auth failure as a version mismatch', () => {
     const auth = 'pg_dump: error: password authentication failed for user "x"';
     const message = postgresEngine.formatDumpError(1, [auth], {
