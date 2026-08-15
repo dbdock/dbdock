@@ -87,7 +87,7 @@ export async function loginCommand(options: LoginOptions = {}): Promise<void> {
       },
     });
   } catch (err) {
-    logger.error(`Login failed: ${(err as Error).message}`);
+    logger.error(`Login failed: ${err as Error}`);
     process.exitCode = 1;
     return;
   }

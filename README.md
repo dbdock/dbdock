@@ -62,15 +62,29 @@ npm install -g dbdock
 <details>
 <summary>Install PostgreSQL client tools</summary>
 
+`pg_dump` refuses to dump a server newer than itself, so install a client whose
+**major version is at or above your server's** — replace `18` below with your
+server major if it is higher. dbdock finds every installed client and uses the
+newest one, so keeping older majors around is harmless.
+
 ```bash
 # macOS
-brew install postgresql
+brew install postgresql@18
 
-# Ubuntu/Debian
-sudo apt-get install postgresql-client
+# Ubuntu/Debian (via the PGDG repo: https://www.postgresql.org/download/linux/ubuntu/)
+sudo apt-get install postgresql-client-18
+
+# RHEL/Fedora
+sudo dnf install postgresql18
 
 # Windows
 # Download from https://www.postgresql.org/download/windows/
+```
+
+If your client lives somewhere dbdock does not look, point it there directly:
+
+```bash
+export DBDOCK_PG_BIN_DIR=/usr/lib/postgresql/18/bin
 ```
 </details>
 

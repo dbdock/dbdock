@@ -37,6 +37,18 @@ export interface EngineErrorContext {
 
 export type ErrorMode = 'connect' | 'dump' | 'restore';
 
+/** Versions parsed out of a client's version-mismatch complaint. */
+export interface MismatchVersions {
+  server?: string;
+  client?: string;
+}
+
+/**
+ * Builds the engine-specific "how to fix it" block for a version mismatch —
+ * install commands only the engine can know. Omit it for the generic advice.
+ */
+export type VersionRemedy = (versions: MismatchVersions) => string;
+
 export interface ExplainOptions {
   /** Raw error text from the client (stderr, ReplyError message, etc.). */
   raw: string;
@@ -46,6 +58,7 @@ export interface ExplainOptions {
   tool: string;
   exitCode?: number;
   mode?: ErrorMode;
+  remedy?: VersionRemedy;
 }
 
 /** First matching pattern wins; returns undefined when nothing matches. */
@@ -79,7 +92,12 @@ function detailsBlock(ctx: EngineErrorContext, fields: DetailField[]): string {
   return lines.length ? `Connection details:\n${lines.join('\n')}\n\n` : '';
 }
 
-function versionMismatchMessage(raw: string): string {
+const GENERIC_VERSION_REMEDY =
+  'Please:\n' +
+  '  • Install client tools at or above your server major version, or\n' +
+  '  • Point DBDOCK_PG_BIN_DIR at a directory containing a matching client binary';
+
+function versionMismatchMessage(raw: string, remedy?: VersionRemedy): string {
   const server = /server version:?\s*([0-9][0-9.]*)/i.exec(raw)?.[1];
   const client =
     /(?:pg_?dump|pg_?restore|client) version:?\s*([0-9][0-9.]*)/i.exec(
@@ -94,9 +112,7 @@ function versionMismatchMessage(raw: string): string {
     "This backup can't run because dbdock's database client is older than the server.\n\n" +
     versions +
     'A dump can only be taken by a client of the same or newer major version.\n\n' +
-    'Please:\n' +
-    '  • Update dbdock so it ships a client matching your server version, or\n' +
-    '  • Point DBDOCK_PG_BIN_DIR at a directory containing a matching client binary'
+    (remedy?.({ server, client }) || GENERIC_VERSION_REMEDY)
   );
 }
 
@@ -105,10 +121,11 @@ export function renderError(
   category: ErrorCategory,
   ctx: EngineErrorContext,
   raw = '',
+  remedy?: VersionRemedy,
 ): string {
   switch (category) {
     case 'versionMismatch':
-      return versionMismatchMessage(raw);
+      return versionMismatchMessage(raw, remedy);
     case 'auth':
       return (
         (ctx.username
@@ -181,9 +198,9 @@ function detailsSection(raw: string): string {
  * pattern matches.
  */
 export function explainError(opts: ExplainOptions): string {
-  const { raw, patterns, ctx, tool, exitCode, mode = 'dump' } = opts;
+  const { raw, patterns, ctx, tool, exitCode, mode = 'dump', remedy } = opts;
   const category = classifyError(raw, patterns);
-  if (category) return renderError(category, ctx, raw);
+  if (category) return renderError(category, ctx, raw, remedy);
 
   const trimmed = raw.trim();
   const withCode = exitCode !== undefined ? ` with exit code ${exitCode}` : '';
