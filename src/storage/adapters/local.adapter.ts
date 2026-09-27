@@ -30,7 +30,7 @@ export class LocalStorageAdapter implements IStorageAdapter {
 
   private async ensureBasePathExists(): Promise<void> {
     try {
-      await mkdir(this.basePath, { recursive: true });
+      await mkdir(this.basePath, { recursive: true, mode: 0o700 });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       this.logger.error(`Failed to create base path: ${msg}`);
@@ -64,9 +64,9 @@ export class LocalStorageAdapter implements IStorageAdapter {
     const fullPath = this.getFullPath(options.key);
     const dir = path.dirname(fullPath);
 
-    await mkdir(dir, { recursive: true });
+    await mkdir(dir, { recursive: true, mode: 0o700 });
 
-    const writeStream = fs.createWriteStream(fullPath);
+    const writeStream = fs.createWriteStream(fullPath, { mode: 0o600 });
 
     return new Promise((resolve, reject) => {
       let finished = false;
@@ -101,7 +101,7 @@ export class LocalStorageAdapter implements IStorageAdapter {
             await fs.promises.writeFile(
               this.getMetadataPath(options.key),
               JSON.stringify(options.metadata),
-              'utf-8',
+              { encoding: 'utf-8', mode: 0o600 },
             );
           }
 

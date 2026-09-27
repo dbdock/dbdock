@@ -1,4 +1,10 @@
-import { existsSync, readFileSync, writeFileSync, appendFileSync } from 'fs';
+import {
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  appendFileSync,
+  chmodSync,
+} from 'fs';
 import { join } from 'path';
 import { logger } from '../utils/logger';
 import { Logger } from '@nestjs/common';
@@ -69,7 +75,8 @@ async function runMigrateConfig(): Promise<void> {
   const cleanedConfig = removeSecretsFromConfigData(config, secretFields);
 
   const backupPath = `${configPath}.backup`;
-  writeFileSync(backupPath, configContent);
+  writeFileSync(backupPath, configContent, { mode: 0o600 });
+  chmodSync(backupPath, 0o600);
   logger.success(`✓ Original config backed up to ${CONFIG_FILE}.backup`);
 
   writeFileSync(configPath, JSON.stringify(cleanedConfig, null, 2) + '\n');
@@ -196,11 +203,18 @@ function updateEnvFile(path: string, secrets: SecretsMap): void {
 
 function updateGitignore(): void {
   const gitignorePath = join(process.cwd(), '.gitignore');
+  const configBackup = `${CONFIG_FILE}.backup`;
 
   if (!existsSync(gitignorePath)) {
-    writeFileSync(gitignorePath, `${ENV_FILE}\n`);
+    writeFileSync(gitignorePath, `${ENV_FILE}\n${configBackup}\n`);
     logger.success('✓ Created .gitignore with .env');
     return;
+  }
+
+  const current = readFileSync(gitignorePath, 'utf-8');
+  if (!current.split('\n').some((line) => line.trim() === configBackup)) {
+    const prefix = current.length > 0 && !current.endsWith('\n') ? '\n' : '';
+    appendFileSync(gitignorePath, `${prefix}${configBackup}\n`);
   }
 
   const content = readFileSync(gitignorePath, 'utf-8');

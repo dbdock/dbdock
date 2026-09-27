@@ -218,6 +218,12 @@ export async function restoreBackupStandalone(
 
     let stream: Readable | Transform = createReadStream(source.path);
 
+    if (config.backup?.encryption?.enabled && !config.backup.encryption.key) {
+      throw new Error(
+        'Encryption is enabled but no key is configured. Set DBDOCK_ENCRYPTION_SECRET in your .env, or disable backup.encryption.enabled.',
+      );
+    }
+
     if (config.backup?.encryption?.enabled && config.backup.encryption.key) {
       if (callbacks?.onStage) {
         callbacks.onStage('Decrypting backup');

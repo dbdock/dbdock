@@ -585,6 +585,14 @@ export async function restoreCommand(): Promise<void> {
       process.exit(1);
     });
 
+    if (config.backup?.encryption?.enabled && !config.backup.encryption.key) {
+      restoreSteps.fail(
+        'Encryption is enabled but no key is configured. Set DBDOCK_ENCRYPTION_SECRET in your .env, or disable backup.encryption.enabled.',
+      );
+      cleanupTemp();
+      process.exit(1);
+    }
+
     if (config.backup?.encryption?.enabled && config.backup.encryption.key) {
       const keyBuffer = Buffer.from(config.backup.encryption.key, 'hex');
 
@@ -593,7 +601,7 @@ export async function restoreCommand(): Promise<void> {
           `Invalid encryption key length: ${keyBuffer.length} bytes (expected 32 bytes)`,
         );
         logger.error(
-          `\nYour key: "${config.backup.encryption.key}" (${config.backup.encryption.key.length} characters)\n\n` +
+          `\nThe configured key is ${config.backup.encryption.key.length} characters long.\n\n` +
             `Please fix:\n` +
             `  • Encryption key must be exactly 64 hexadecimal characters (32 bytes)\n` +
             `  • Generate a valid key: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"\n` +

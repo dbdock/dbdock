@@ -200,13 +200,16 @@ function loadConfigFromEnv(): CLIConfig {
     };
   }
   const config: CLIConfig = { database, storage };
-  const encryptionEnabled = process.env.ENCRYPTION_ENABLED !== 'false';
+  const encryptionKey =
+    process.env.DBDOCK_ENCRYPTION_SECRET || process.env.ENCRYPTION_SECRET;
+  const encryptionEnabled =
+    process.env.ENCRYPTION_ENABLED === 'true' ||
+    (process.env.ENCRYPTION_ENABLED !== 'false' && Boolean(encryptionKey));
   if (encryptionEnabled) {
     config.backup = {
       encryption: {
         enabled: true,
-        key:
-          process.env.DBDOCK_ENCRYPTION_SECRET || process.env.ENCRYPTION_SECRET,
+        key: encryptionKey,
       },
     };
   }
@@ -283,6 +286,17 @@ export function loadConfig(): CLIConfig {
   mergedConfig = applyDbUrlToCliDatabase(
     mergedConfig as unknown as Record<string, unknown>,
   ) as unknown as typeof mergedConfig;
+
+  const encryptionSecret = (
+    mergedConfig as unknown as { encryption?: { secret?: string } }
+  ).encryption?.secret;
+  if (
+    encryptionSecret &&
+    mergedConfig.backup?.encryption?.enabled &&
+    !mergedConfig.backup.encryption.key
+  ) {
+    mergedConfig.backup.encryption.key = encryptionSecret;
+  }
 
   if (mergedConfig.postgres?.password && !mergedConfig.database?.password) {
     mergedConfig.database.password = mergedConfig.postgres.password;

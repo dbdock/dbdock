@@ -96,6 +96,12 @@ export async function createBackupStandalone(
     streams.push(compressStream);
   }
 
+  if (config.backup?.encryption?.enabled && !config.backup.encryption.key) {
+    throw new Error(
+      'Encryption is enabled but no key is configured. Set DBDOCK_ENCRYPTION_SECRET in your .env, or disable backup.encryption.enabled.',
+    );
+  }
+
   if (config.backup?.encryption?.enabled && config.backup.encryption.key) {
     if (callbacks?.onStage) {
       callbacks.onStage('Encrypting backup');
@@ -105,7 +111,7 @@ export async function createBackupStandalone(
     if (keyBuffer.length !== 32) {
       throw new Error(
         `Invalid encryption key length: ${keyBuffer.length} bytes (expected 32 bytes)\n\n` +
-          `Your key: "${config.backup.encryption.key}" (${config.backup.encryption.key.length} characters)\n\n` +
+          `The configured key is ${config.backup.encryption.key.length} characters long.\n\n` +
           `Please fix:\n` +
           `  • Encryption key must be exactly 64 hexadecimal characters (32 bytes)\n` +
           `  • Generate a valid key: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"\n` +

@@ -7,7 +7,10 @@ import {
   DumpHandle,
 } from './engine.types';
 import { EngineErrorContext, ErrorPattern, explainError } from './error-format';
-import { assertValidDatabaseName } from './db-name.validator';
+import {
+  assertNoOptionInjection,
+  assertValidDatabaseName,
+} from './db-name.validator';
 
 const DUMP_BINARY = 'mysqldump';
 const CLIENT_BINARY = 'mysql';
@@ -109,6 +112,7 @@ export const mysqlEngine: DatabaseEngine = {
   },
 
   spawnDump(conn): DumpHandle {
+    assertNoOptionInjection([conn.database]);
     const args = [
       ...connectionArgs(conn, DEFAULT_PORT),
       '--single-transaction',
@@ -124,7 +128,12 @@ export const mysqlEngine: DatabaseEngine = {
   },
 
   spawnRestore(conn): ChildProcessWithoutNullStreams {
-    const args = [...connectionArgs(conn, DEFAULT_PORT), conn.database || ''];
+    assertNoOptionInjection([conn.database]);
+    const args = [
+      ...connectionArgs(conn, DEFAULT_PORT),
+      '--binary-mode',
+      conn.database || '',
+    ];
     return spawn(CLIENT_BINARY, args, { env: buildEnv(conn) });
   },
 
