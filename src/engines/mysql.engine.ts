@@ -1,5 +1,6 @@
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import type { ChildProcessWithoutNullStreams } from 'child_process';
+import type { SslMode } from '../cli/utils/config';
 import {
   DatabaseEngine,
   DatabaseStats,
@@ -51,6 +52,46 @@ function errorContext(conn?: DbConnection): EngineErrorContext {
   };
 }
 
+let clientIsMariaDb: boolean | undefined;
+
+function isMariaDbClient(): boolean {
+  if (clientIsMariaDb === undefined) {
+    const probe = spawnSync(CLIENT_BINARY, ['--version'], { encoding: 'utf8' });
+    clientIsMariaDb = /mariadb/i.test(`${probe.stdout ?? ''}`);
+  }
+  return clientIsMariaDb;
+}
+
+// Oracle's client only understands --ssl-mode; MariaDB's rejects it and uses
+// --ssl/--skip-ssl, so the flags depend on which client is installed.
+const MYSQL_SSL_MODE: Record<SslMode, string> = {
+  disable: 'DISABLED',
+  allow: 'PREFERRED',
+  prefer: 'PREFERRED',
+  require: 'REQUIRED',
+  'verify-ca': 'VERIFY_CA',
+  'verify-full': 'VERIFY_IDENTITY',
+};
+
+const MARIADB_SSL_FLAGS: Record<SslMode, string[]> = {
+  disable: ['--skip-ssl'],
+  allow: [],
+  prefer: [],
+  require: ['--ssl', '--skip-ssl-verify-server-cert'],
+  'verify-ca': ['--ssl', '--ssl-verify-server-cert'],
+  'verify-full': ['--ssl', '--ssl-verify-server-cert'],
+};
+
+export function mysqlSslArgs(
+  sslMode: SslMode | undefined,
+  mariaDbClient: boolean = isMariaDbClient(),
+): string[] {
+  if (!sslMode) return [];
+  return mariaDbClient
+    ? MARIADB_SSL_FLAGS[sslMode]
+    : [`--ssl-mode=${MYSQL_SSL_MODE[sslMode]}`];
+}
+
 function connectionArgs(conn: DbConnection, defaultPort: number): string[] {
   return [
     '-h',
@@ -60,6 +101,7 @@ function connectionArgs(conn: DbConnection, defaultPort: number): string[] {
     '-u',
     resolveUser(conn),
     '--protocol=TCP',
+    ...(conn.sslMode ? mysqlSslArgs(conn.sslMode) : []),
   ];
 }
 

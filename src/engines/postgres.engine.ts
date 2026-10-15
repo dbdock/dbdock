@@ -43,10 +43,11 @@ function resolvePassword(conn: DbConnection): string | undefined {
 }
 
 function buildEnv(conn: DbConnection): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env };
   const password = resolvePassword(conn);
-  return password
-    ? { ...process.env, PGPASSWORD: password }
-    : { ...process.env };
+  if (password) env.PGPASSWORD = password;
+  if (conn.sslMode) env.PGSSLMODE = conn.sslMode;
+  return env;
 }
 
 // Postgres/psql error vocabulary, most-specific first.
