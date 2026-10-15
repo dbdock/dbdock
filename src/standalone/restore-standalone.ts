@@ -1,5 +1,5 @@
 import { CLIConfig } from '../cli/utils/config';
-import { Readable, Transform } from 'stream';
+import { Readable, Transform, Writable, pipeline } from 'stream';
 import {
   createReadStream,
   createWriteStream,
@@ -35,6 +35,10 @@ import { ManagedStorageAdapter } from '../storage/adapters/managed.adapter';
 import { IStorageAdapter } from '../storage/storage.interface';
 import { ManagedBroker } from '../cloud/types';
 import { getEngine } from '../engines';
+import {
+  isHarmlessPgRestoreWarning,
+  summarizePgRestoreOutput,
+} from '../engines/pg-restore-output';
 
 export interface RestoreStandaloneDeps {
   managed?: ManagedBroker;
@@ -48,6 +52,12 @@ export interface RestoreProgressCallback {
 export interface RestoreStandaloneOptions {
   storageKey: string;
   target?: CLIConfig['database'];
+  // Fail on any restore error instead of tolerating exit 1; for Postgres only
+  // the pg_restore errors isHarmlessPgRestoreWarning accepts are let through.
+  strict?: boolean;
+  // Runs once the backup is downloaded and proven to decode, just before the
+  // restore starts. Use it to clear the target, e.g. DatabaseLock.reset().
+  beforeRestore?: () => Promise<void>;
 }
 
 function buildRemoteAdapter(
@@ -216,49 +226,16 @@ export async function restoreBackupStandalone(
       deps,
     );
 
-    let stream: Readable | Transform = createReadStream(source.path);
-
-    if (config.backup?.encryption?.enabled && config.backup.encryption.key) {
-      if (callbacks?.onStage) {
-        callbacks.onStage('Decrypting backup');
-      }
-      const keyBuffer = Buffer.from(config.backup.encryption.key, 'hex');
-      if (keyBuffer.length !== 32) {
-        throw new Error(
-          `Invalid encryption key length: ${keyBuffer.length} bytes (expected 32 bytes)`,
-        );
-      }
-      const headerPrefix = peekBackupHeader(
-        source.path,
-        BACKUP_HEADER_LENGTH + KEY_FINGERPRINT_LENGTH,
-      );
-      const isVersioned = hasBackupHeader(headerPrefix);
-      if (readBackupVersion(headerPrefix) === BACKUP_VERSION_GCM_FP) {
-        const storedFingerprint = headerPrefix.subarray(
-          BACKUP_HEADER_LENGTH,
-          BACKUP_HEADER_LENGTH + KEY_FINGERPRINT_LENGTH,
-        );
-        const providedFingerprint = computeKeyFingerprint(keyBuffer);
-        if (!storedFingerprint.equals(providedFingerprint)) {
-          throw new Error(
-            `${WRONG_KEY_MESSAGE}\n\n` +
-              `  Backup was created with key fingerprint: ${formatKeyFingerprint(storedFingerprint)}\n` +
-              `  Your configured key fingerprint:         ${formatKeyFingerprint(providedFingerprint)}`,
-          );
-        }
-      }
-      const decipher = isVersioned
-        ? createBackupDecryptStream(keyBuffer)
-        : createLegacyDecryptStream(keyBuffer);
-      stream = stream.pipe(decipher);
+    if (options.beforeRestore) {
+      callbacks?.onStage?.('Verifying backup');
+      await verifyBackupDecodes(config, source.path);
+      callbacks?.onStage?.('Preparing target database');
+      await options.beforeRestore();
     }
 
-    if (config.backup?.compression?.enabled) {
-      if (callbacks?.onStage) {
-        callbacks.onStage('Decompressing backup');
-      }
-      stream = stream.pipe(createBrotliDecompress());
-    }
+    const stream = chainStages(
+      decodeStages(config, source.path, callbacks?.onStage),
+    );
 
     if (callbacks?.onStage) {
       callbacks.onStage('Restoring to database');
@@ -269,14 +246,17 @@ export async function restoreBackupStandalone(
 
     await new Promise<void>((resolve, reject) => {
       let errorOutput = '';
+      let fullOutput = '';
       let hasWarnings = false;
 
       stream.on('error', (err: Error) => {
+        restoreProcess.kill();
         reject(new Error(`Failed to read backup data: ${err.message}`));
       });
 
       restoreProcess.stderr.on('data', (data: Buffer) => {
         const message = data.toString();
+        fullOutput += message;
         if (engine.shouldIgnoreRestoreMessage(message)) {
           hasWarnings = true;
         } else if (message.trim()) {
@@ -293,6 +273,17 @@ export async function restoreBackupStandalone(
       });
 
       restoreProcess.on('close', (code) => {
+        if (options.strict) {
+          const failure = strictRestoreFailure(engine.id, code, fullOutput);
+          if (failure === undefined) {
+            resolve();
+          } else if (failure) {
+            reject(new Error(engine.formatRestoreError(failure)));
+          } else {
+            reject(new Error(`Restore exited with code ${code}`));
+          }
+          return;
+        }
         if (code === 0 || (code === 1 && !errorOutput && hasWarnings)) {
           resolve();
         } else if (errorOutput) {
@@ -305,4 +296,102 @@ export async function restoreBackupStandalone(
   } finally {
     cleanup();
   }
+}
+
+function decodeStages(
+  config: CLIConfig,
+  sourcePath: string,
+  onStage?: (stage: string) => void,
+): [Readable, ...Transform[]] {
+  const stages: [Readable, ...Transform[]] = [createReadStream(sourcePath)];
+
+  if (config.backup?.encryption?.enabled && config.backup.encryption.key) {
+    onStage?.('Decrypting backup');
+    const keyBuffer = Buffer.from(config.backup.encryption.key, 'hex');
+    if (keyBuffer.length !== 32) {
+      throw new Error(
+        `Invalid encryption key length: ${keyBuffer.length} bytes (expected 32 bytes)`,
+      );
+    }
+    const headerPrefix = peekBackupHeader(
+      sourcePath,
+      BACKUP_HEADER_LENGTH + KEY_FINGERPRINT_LENGTH,
+    );
+    const isVersioned = hasBackupHeader(headerPrefix);
+    if (readBackupVersion(headerPrefix) === BACKUP_VERSION_GCM_FP) {
+      const storedFingerprint = headerPrefix.subarray(
+        BACKUP_HEADER_LENGTH,
+        BACKUP_HEADER_LENGTH + KEY_FINGERPRINT_LENGTH,
+      );
+      const providedFingerprint = computeKeyFingerprint(keyBuffer);
+      if (!storedFingerprint.equals(providedFingerprint)) {
+        throw new Error(
+          `${WRONG_KEY_MESSAGE}\n\n` +
+            `  Backup was created with key fingerprint: ${formatKeyFingerprint(storedFingerprint)}\n` +
+            `  Your configured key fingerprint:         ${formatKeyFingerprint(providedFingerprint)}`,
+        );
+      }
+    }
+    stages.push(
+      isVersioned
+        ? createBackupDecryptStream(keyBuffer)
+        : createLegacyDecryptStream(keyBuffer),
+    );
+  }
+
+  if (config.backup?.compression?.enabled) {
+    onStage?.('Decompressing backup');
+    stages.push(createBrotliDecompress());
+  }
+
+  return stages;
+}
+
+function chainStages([source, ...transforms]: [Readable, ...Transform[]]):
+  | Readable
+  | Transform {
+  return transforms.reduce<Readable | Transform>(
+    (stream, next) => stream.pipe(next),
+    source,
+  );
+}
+
+// GCM only authenticates at the end of the stream, so a corrupt or truncated
+// backup would otherwise be discovered after beforeRestore had already wiped
+// the target. Decode it once into nothing first; no plaintext touches disk.
+async function verifyBackupDecodes(
+  config: CLIConfig,
+  sourcePath: string,
+): Promise<void> {
+  const discard = new Writable({
+    write(_chunk, _encoding, done) {
+      done();
+    },
+  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      pipeline([...decodeStages(config, sourcePath), discard], (err) =>
+        err ? reject(err) : resolve(),
+      );
+    });
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `The backup could not be fully decrypted and decompressed, so the target database was left untouched: ${reason}`,
+    );
+  }
+}
+
+// Returns undefined on success, the harmful output to report, or '' when the
+// restore failed without saying why.
+function strictRestoreFailure(
+  engineId: string,
+  code: number | null,
+  output: string,
+): string | undefined {
+  if (code === 0) return undefined;
+  if (engineId !== 'postgresql') return output.trim();
+  if (code === 1 && isHarmlessPgRestoreWarning(output)) return undefined;
+  const { harmful } = summarizePgRestoreOutput(output);
+  return harmful.length > 0 ? harmful.join('\n') : output.trim();
 }
