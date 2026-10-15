@@ -61,9 +61,16 @@ export type {
   RestoreStandaloneOptions,
   RestoreStandaloneDeps,
 } from './standalone/restore-standalone';
+export { lockDatabase, DatabaseBusyError } from './standalone/database-lock';
+export type { DatabaseLock } from './standalone/database-lock';
 export { getEngine, SUPPORTED_ENGINE_TYPES } from './engines';
 export type { DatabaseEngine } from './engines';
-export type { CLIConfig } from './cli/utils/config';
+export {
+  isHarmlessPgRestoreWarning,
+  summarizePgRestoreOutput,
+} from './engines/pg-restore-output';
+export type { PgRestoreOutputSummary } from './engines/pg-restore-output';
+export type { CLIConfig, SslMode } from './cli/utils/config';
 export {
   computeKeyFingerprint,
   formatKeyFingerprint,
