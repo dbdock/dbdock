@@ -13,6 +13,15 @@ import { checkFilePermissions } from '../../config/permissions.checker';
 
 export const CONFIG_FILE = 'dbdock.config.json';
 
+// libpq sslmode values; MySQL/MariaDB map them onto their own client flags.
+export type SslMode =
+  | 'disable'
+  | 'allow'
+  | 'prefer'
+  | 'require'
+  | 'verify-ca'
+  | 'verify-full';
+
 export interface CLIConfig {
   database: {
     type: string;
@@ -24,6 +33,7 @@ export interface CLIConfig {
     password?: string;
     database?: string;
     sqlitePath?: string;
+    sslMode?: SslMode;
   };
   storage: {
     provider: string;
