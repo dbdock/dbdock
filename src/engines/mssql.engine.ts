@@ -149,7 +149,7 @@ export const mssqlEngine: DatabaseEngine = {
   },
 
   spawnRestore(conn): ChildProcessWithoutNullStreams {
-    return spawn(CLIENT_BINARY, sqlcmdArgs(conn, ['-b']), {
+    return spawn(CLIENT_BINARY, sqlcmdArgs(conn, ['-b', '-X']), {
       env: sqlcmdEnv(conn),
     });
   },

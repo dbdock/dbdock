@@ -241,7 +241,7 @@ export class ApiClient implements ManagedBroker {
   async deleteChannel(id: string): Promise<void> {
     await this.request({
       method: 'DELETE',
-      path: `/notification-channels/${id}`,
+      path: `/notification-channels/${encodeURIComponent(id)}`,
       retry: false,
     });
   }
@@ -249,7 +249,7 @@ export class ApiClient implements ManagedBroker {
   async testChannel(id: string): Promise<unknown> {
     const res = await this.request({
       method: 'POST',
-      path: `/notification-channels/${id}/test`,
+      path: `/notification-channels/${encodeURIComponent(id)}/test`,
       retry: false,
     });
     return res.data;
@@ -280,7 +280,7 @@ export class ApiClient implements ManagedBroker {
   async deleteAlert(id: string): Promise<void> {
     await this.request({
       method: 'DELETE',
-      path: `/alerts/${id}`,
+      path: `/alerts/${encodeURIComponent(id)}`,
       retry: false,
     });
   }
@@ -309,7 +309,7 @@ export class ApiClient implements ManagedBroker {
   async getProject(ref: string): Promise<RemoteProject> {
     const res = await this.request<RemoteProject>({
       method: 'GET',
-      path: `/projects/${ref}`,
+      path: `/projects/${encodeURIComponent(ref)}`,
     });
     return res.data as RemoteProject;
   }
@@ -320,7 +320,7 @@ export class ApiClient implements ManagedBroker {
   ): Promise<RemoteState | null> {
     const res = await this.request<RemoteState>({
       method: 'GET',
-      path: `/projects/${ref}/state`,
+      path: `/projects/${encodeURIComponent(ref)}/state`,
       headers: etag ? { 'If-None-Match': etag } : undefined,
     });
     if (res.status === 304) {
@@ -351,7 +351,7 @@ export class ApiClient implements ManagedBroker {
       resourceHashes: Record<string, string>;
     }>({
       method: 'POST',
-      path: `/projects/${ref}/sync`,
+      path: `/projects/${encodeURIComponent(ref)}/sync`,
       body,
       headers: {
         'Idempotency-Key': idempotencyKey,
@@ -373,7 +373,7 @@ export class ApiClient implements ManagedBroker {
   ): Promise<{ lockId: string; expiresAt: string }> {
     const res = await this.request<{ lockId: string; expiresAt: string }>({
       method: 'POST',
-      path: `/projects/${ref}/lock`,
+      path: `/projects/${encodeURIComponent(ref)}/lock`,
       body,
       retry: false,
     });
@@ -386,7 +386,7 @@ export class ApiClient implements ManagedBroker {
   ): Promise<{ ok: boolean; forced: boolean }> {
     const res = await this.request<{ ok: boolean; forced: boolean }>({
       method: 'POST',
-      path: `/projects/${ref}/unlock`,
+      path: `/projects/${encodeURIComponent(ref)}/unlock`,
       body,
       retry: false,
     });

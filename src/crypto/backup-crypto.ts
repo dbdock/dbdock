@@ -145,10 +145,13 @@ export function createBackupDecryptStream(keyMaterial: Buffer): Transform {
     },
     flush(callback: TransformCallback) {
       try {
-        if (decipher && buffer.length === TAG_LENGTH) {
-          decipher.setAuthTag(buffer);
-          this.push(decipher.final());
+        if (!decipher || buffer.length !== TAG_LENGTH) {
+          throw new Error(
+            'Backup is truncated or corrupted: the authentication tag is missing.',
+          );
         }
+        decipher.setAuthTag(buffer);
+        this.push(decipher.final());
         callback();
       } catch (error) {
         callback(error as Error);

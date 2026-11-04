@@ -303,6 +303,12 @@ function decodeStages(
   sourcePath: string,
   onStage?: (stage: string) => void,
 ): [Readable, ...Transform[]] {
+  if (config.backup?.encryption?.enabled && !config.backup.encryption.key) {
+    throw new Error(
+      'Encryption is enabled but no key is configured. Set DBDOCK_ENCRYPTION_SECRET in your .env, or disable backup.encryption.enabled.',
+    );
+  }
+
   const stages: [Readable, ...Transform[]] = [createReadStream(sourcePath)];
 
   if (config.backup?.encryption?.enabled && config.backup.encryption.key) {

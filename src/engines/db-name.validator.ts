@@ -7,3 +7,15 @@ export function assertValidDatabaseName(database: string): void {
     );
   }
 }
+
+export function assertNoOptionInjection(
+  values: Array<string | undefined>,
+): void {
+  for (const value of values) {
+    if (value !== undefined && value.startsWith('-')) {
+      throw new Error(
+        `Invalid connection value: "${value}". Host, user and database must not start with "-".`,
+      );
+    }
+  }
+}
