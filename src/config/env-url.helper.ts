@@ -1,3 +1,14 @@
+import type { SslMode } from '@/cli/utils/config';
+
+const SSL_MODES: SslMode[] = [
+  'disable',
+  'allow',
+  'prefer',
+  'require',
+  'verify-ca',
+  'verify-full',
+];
+
 export interface PostgresConfigFromUrl {
   host: string;
   port: number;
@@ -23,6 +34,34 @@ export function parsePostgresUrlToConfig(
     user: url.username ? decodeURIComponent(url.username) : 'postgres',
     password: url.password ? decodeURIComponent(url.password) : '',
     database: database,
+  };
+}
+
+export function parseDatabaseUrl(
+  urlString: string,
+): PostgresConfigFromUrl & { type: string; sslMode?: SslMode } {
+  const url = new URL(urlString);
+  const mysql = url.protocol === 'mysql:' || url.protocol === 'mariadb:';
+  if (!mysql && url.protocol !== 'postgres:' && url.protocol !== 'postgresql:')
+    throw new Error('DATABASE_URL must use PostgreSQL, MySQL or MariaDB.');
+  const database = decodeURIComponent(url.pathname.replace(/^\//, ''));
+  if (!database) throw new Error('DATABASE_URL must name a database.');
+  const rawSslMode = url.searchParams.get('sslmode') ?? undefined;
+  if (rawSslMode && !SSL_MODES.includes(rawSslMode as SslMode))
+    throw new Error(`DATABASE_URL has an unknown sslmode: ${rawSslMode}`);
+  const sslMode = rawSslMode as SslMode | undefined;
+  return {
+    type: mysql
+      ? url.protocol === 'mariadb:'
+        ? 'mariadb'
+        : 'mysql'
+      : 'postgresql',
+    host: url.hostname,
+    port: Number(url.port || (mysql ? 3306 : 5432)),
+    user: decodeURIComponent(url.username),
+    password: decodeURIComponent(url.password),
+    database,
+    sslMode,
   };
 }
 
@@ -60,9 +99,11 @@ export function applyDbUrlToCliDatabase(
 ): Record<string, unknown> {
   const url = getDbUrlFromEnv();
   if (!url || !url.trim()) return config;
-  const parsed = parsePostgresUrlToConfig(url);
+  const parsed = parseDatabaseUrl(url);
   const merged = cloneConfig(config);
   if (!merged.database) merged.database = {};
+  merged.database.type = parsed.type;
+  merged.database.sslMode = parsed.sslMode;
   merged.database.host = parsed.host;
   merged.database.port = parsed.port;
   merged.database.username = parsed.user;

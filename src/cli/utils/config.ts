@@ -1,12 +1,13 @@
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
+import { config as loadEnv } from 'dotenv';
 import {
   loadSecretsFromEnv,
   mergeSecretsIntoConfig,
 } from '../../config/secrets.validator';
 import {
   getDbUrlFromEnv,
-  parsePostgresUrlToConfig,
+  parseDatabaseUrl,
   applyDbUrlToCliDatabase,
 } from '../../config/env-url.helper';
 import { checkFilePermissions } from '../../config/permissions.checker';
@@ -116,21 +117,22 @@ export type ScheduleEntry = NonNullable<
   NonNullable<CLIConfig['backup']>['schedules']
 >[number];
 
-export function getConfigPath(): string {
-  return process.env.DBDOCK_CONFIG_PATH || join(process.cwd(), CONFIG_FILE);
+export function getConfigPath(cwd = process.cwd()): string {
+  return process.env.DBDOCK_CONFIG_PATH || join(cwd, CONFIG_FILE);
 }
 
-export function configExists(): boolean {
-  return existsSync(getConfigPath());
+export function configExists(cwd = process.cwd()): boolean {
+  return existsSync(getConfigPath(cwd));
 }
 
 function loadConfigFromEnv(): CLIConfig {
   const dbUrl = getDbUrlFromEnv();
   let database: CLIConfig['database'];
   if (dbUrl) {
-    const parsed = parsePostgresUrlToConfig(dbUrl);
+    const parsed = parseDatabaseUrl(dbUrl);
     database = {
-      type: 'postgres',
+      type: parsed.type,
+      sslMode: parsed.sslMode,
       host: parsed.host,
       port: parsed.port,
       username: parsed.user,
@@ -256,8 +258,9 @@ function loadConfigFromEnv(): CLIConfig {
   return config;
 }
 
-export function loadConfig(): CLIConfig {
-  const configPath = getConfigPath();
+export function loadConfig(cwd = process.cwd()): CLIConfig {
+  loadEnv({ path: join(cwd, '.env'), quiet: true });
+  const configPath = getConfigPath(cwd);
   let config: CLIConfig;
   if (!existsSync(configPath)) {
     config = loadConfigFromEnv();

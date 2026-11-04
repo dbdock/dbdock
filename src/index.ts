@@ -75,3 +75,17 @@ export {
   computeKeyFingerprint,
   formatKeyFingerprint,
 } from './crypto/backup-format';
+
+export { runGuardedChange } from '@/changes/guard';
+export { restoreCheckpoint } from '@/changes/restore';
+export { sqlSummary } from '@/changes/metadata';
+export { syncRecords } from '@/changes/records';
+export type {
+  ChangeRecord,
+  Checkpoint,
+  GuardOptions,
+  GuardResult,
+} from '@/changes/types';
+export type { RestoreCheckpointOptions } from '@/changes/restore';
+
+export { Logger as DatabaseLogger } from '@nestjs/common';

@@ -3,11 +3,11 @@ import * as path from 'path';
 import * as dotenv from 'dotenv';
 import { getDbUrlFromEnv } from './env-url.helper';
 
-dotenv.config({ path: path.join(process.cwd(), '.env') });
+dotenv.config({ path: path.join(process.cwd(), '.env'), quiet: true });
 
 const envLocalPath = path.join(process.cwd(), '.env.local');
 if (fs.existsSync(envLocalPath)) {
-  dotenv.config({ path: envLocalPath, override: true });
+  dotenv.config({ path: envLocalPath, override: true, quiet: true });
 }
 
 export const SENSITIVE_FIELDS = [

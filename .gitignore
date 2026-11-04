@@ -69,3 +69,12 @@ dbdock.config.json
 
 # Single-package repo; local tooling regenerates a malformed workspace file
 pnpm-workspace.yaml
+
+.local/
+.openai/
+.dbdock/
+AGENTS.md
+AGENT.md
+CLAUDE.md
+CODEX.md
+setup.sh

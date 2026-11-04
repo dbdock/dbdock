@@ -1,3 +1,4 @@
+import type { ChangeRecord } from '@/changes/types';
 import {
   Alert,
   AlertEvent,
@@ -141,6 +142,30 @@ export class ApiClient implements ManagedBroker {
     throw new NetworkError(
       `Could not reach ${this.baseUrl}: ${lastError?.message ?? 'network error'}`,
     );
+  }
+
+  async ingestChange(ref: string, record: ChangeRecord): Promise<void> {
+    await this.request({
+      method: 'POST',
+      path: `/projects/${encodeURIComponent(ref)}/changes`,
+      body: {
+        id: record.id,
+        checkpointId: record.checkpointId,
+        occurredAt: record.occurredAt,
+        completedAt: record.completedAt,
+        actor: record.actor,
+        actorKind: record.actorKind,
+        context: record.context,
+        kind: record.kind,
+        summary: record.summary,
+        deploy: record.deploy,
+        session: record.session,
+        status: record.status,
+        checkpointStorage: record.checkpointStorage,
+        restoredCheckpointId: record.restoredCheckpointId,
+      },
+      retry: false,
+    });
   }
 
   async me(): Promise<Identity> {

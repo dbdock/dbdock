@@ -6,6 +6,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-04
+
+### Security
+- Encrypted backups that are truncated or missing their authentication tag now fail to decrypt instead of restoring partial data
+- Backup and restore refuse to run when encryption is enabled without a key, instead of writing or reading unencrypted data; `DBDOCK_ENCRYPTION_SECRET` and `encryption.secret` now map to the backup key
+- Error messages no longer print the encryption key
+- MySQL restore runs with `--binary-mode`, `sqlcmd` restore with `-X`, and MySQL database names starting with `-` are rejected
+- Cloud API path segments are URL-encoded
+- Local backup folders are created with `0700` and the `migrate-config` backup file with `0600`, and that backup file is added to `.gitignore`
+
+### Added
+- `dbdock run` saves a checkpoint, runs a change against a local database and keeps a change record
+- `dbdock restore <checkpoint-id>` restores a saved checkpoint; `dbdock restore` with no id still opens the backup picker
+- `dbdock link` links a directory to a DBDock Cloud project without sharing database credentials
+- `dbdock sync` now sends pending change records to Cloud
+- SDK exports `runGuardedChange`, `restoreCheckpoint`, `sqlSummary` and `syncRecords`
+- `lockDatabase` holds a Postgres or MySQL restore target and resets it before a restore
+- `strict`, `beforeRestore` and `checksum` options on `restoreBackupStandalone`; the backup is fully decoded and checked before the target is touched
+- `DATABASE_URL` accepts `mysql://` and `mariadb://` URLs and an `sslmode` parameter
+
+### Changed
+- `sslMode` is passed to Postgres and MySQL client tools
+- Harmless `pg_restore` errors (unknown settings from a newer `pg_dump`, objects that already exist, ownership steps) no longer fail a strict restore
+
+## [1.2.0] - 2026-06-20
+
 ### Security
 - Storage deletion guard: every object delete now passes structural validation (no empty, traversal, wildcard, leading-slash, or folder-style keys) plus an allow-list of protected prefixes (`backups/`, `wal/`, `dbdock_backups/`, `backup-`), so retention and cleanup can never delete an object outside DBDock's own namespace
 - Deletion circuit breaker: a runaway loop cannot delete more than `maxDeletesPerWindow` objects within a rolling window (default 1000/60s)

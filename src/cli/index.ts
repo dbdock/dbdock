@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
+import { runCommand } from '@/cli/commands/run';
+import { linkCommand } from '@/cli/commands/link';
+import { restoreCheckpointCommand } from '@/cli/commands/restore-checkpoint';
 import { initCommand } from './commands/init';
 import { backupCommand } from './commands/backup';
 import { restoreCommand } from './commands/restore';
@@ -31,21 +34,23 @@ const packageJson = JSON.parse(
 ) as { version: string };
 const version = packageJson.version;
 
-process.on('SIGINT', () => {
-  console.log('\n\nOperation cancelled by user');
-  process.exit(0);
-});
+if (!['run', 'restore'].includes(process.argv[2]))
+  process.on('SIGINT', () => {
+    console.log('\n\nOperation cancelled by user');
+    process.exit(0);
+  });
 
-process.on('SIGTERM', () => {
-  console.log('\n\nOperation terminated');
-  process.exit(0);
-});
+if (!['run', 'restore'].includes(process.argv[2]))
+  process.on('SIGTERM', () => {
+    console.log('\n\nOperation terminated');
+    process.exit(0);
+  });
 
 const program = new Command();
 
 program
   .name('dbdock')
-  .description('Enterprise-grade database backup and restore tool')
+  .description('Checkpoint database changes and keep a record')
   .version(version);
 
 program
@@ -70,9 +75,34 @@ program
   .action(backupCommand);
 
 program
-  .command('restore')
-  .description('Restore from a backup')
-  .action(restoreCommand);
+  .command('restore [checkpoint-id]')
+  .description('Restore a checkpoint or choose an existing backup')
+  .option(
+    '--yes',
+    'Confirm that restore removes writes made after the checkpoint',
+  )
+  .action(async (id: string | undefined, options: { yes?: boolean }) => {
+    if (id) await restoreCheckpointCommand(id, options);
+    else await restoreCommand();
+  });
+
+program
+  .command('link')
+  .description(
+    'Link this directory to Cloud without sharing database credentials',
+  )
+  .option('--project <id>', 'Existing project id')
+  .option('--name <name>', 'Name for a new project')
+  .action(linkCommand);
+
+program
+  .command('run')
+  .description('Save a checkpoint, run a change locally and keep its record')
+  .argument('[command...]', 'Migration command and arguments after --')
+  .option('--sql <file>', 'Run a local SQL file')
+  .option('--actor <name>', 'Person or agent name')
+  .option('--agent <session>', 'Agent session id')
+  .action(runCommand);
 
 program
   .command('test')

@@ -1,4 +1,5 @@
 import { CLIConfig } from '../cli/utils/config';
+import { createHash } from 'crypto';
 import { Readable, Transform, Writable, pipeline } from 'stream';
 import {
   createReadStream,
@@ -58,6 +59,7 @@ export interface RestoreStandaloneOptions {
   // Runs once the backup is downloaded and proven to decode, just before the
   // restore starts. Use it to clear the target, e.g. DatabaseLock.reset().
   beforeRestore?: () => Promise<void>;
+  checksum?: string;
 }
 
 function buildRemoteAdapter(
@@ -225,6 +227,16 @@ export async function restoreBackupStandalone(
       tempFiles,
       deps,
     );
+
+    if (options.checksum) {
+      const digest = createHash('sha256');
+      for await (const chunk of createReadStream(source.path))
+        digest.update(chunk as Buffer);
+      if (digest.digest('hex') !== options.checksum)
+        throw new Error(
+          'Checkpoint file is damaged. The database was not changed.',
+        );
+    }
 
     if (options.beforeRestore) {
       callbacks?.onStage?.('Verifying backup');

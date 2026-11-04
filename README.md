@@ -2,7 +2,7 @@
 
 # DBDock
 
-**The database toolkit for backups, restores, copies, and cross-database migrations — with encryption, compression, and multi-cloud storage built in.**
+DBDock shows what changed in your database, who changed it, and lets you put it back. Your database URL stays on your machine or CI.
 
 [![npm version](https://img.shields.io/npm/v/dbdock.svg)](https://www.npmjs.com/package/dbdock)
 [![npm downloads](https://img.shields.io/npm/dm/dbdock.svg)](https://www.npmjs.com/package/dbdock)
@@ -16,26 +16,38 @@
 
 ---
 
-Stop writing throwaway backup scripts. Stop maintaining migration code. One CLI, one command.
+Run changes through the guard so a complete checkpoint is saved before they start:
 
 ```bash
-npx dbdock init                               # One-time setup
-npx dbdock backup                             # Backup with encryption + compression
-npx dbdock restore                            # Interactive restore
-npx dbdock copydb "src_url" "dst_url"         # Copy a database, zero config
-npx dbdock migrate "mongo_url" "postgres_url" # Cross-database migration
-npx dbdock login && npx dbdock sync           # Link this project to DBDock Cloud
+npm install --save-dev dbdock
+npx dbdock login
+npx dbdock link
+npx dbdock run -- npx prisma migrate deploy
 ```
 
-> **Two ways to use DBDock.** This CLI is the open-source, self-hosted half. There's also [**DBDock Cloud**](https://dbdock.xyz) — a managed dashboard with scheduled jobs, managed storage, teams, and alerts. [**Cloud Sync**](https://docs.dbdock.xyz/cloud-sync/overview) links the two, and only non-secret metadata ever leaves your machine.
+Set `DATABASE_URL` or `DBDOCK_DB_URL` in the local environment or private `.env` file. The guard supports PostgreSQL, MySQL and MariaDB and refuses the change if its checkpoint or initial local record cannot be saved. Use `dbdock run --sql migration.sql` for SQL files.
+
+Checkpoints default to `.dbdock/checkpoints/` or use your own S3/R2 bucket. CI requires a bucket or `DBDOCK_CHECKPOINT_DIR` on an explicitly mounted persistent volume. Local and customer-bucket checkpoints are outside Cloud backup limits and support your own encryption key on every plan.
+
+The linked dashboard receives one completed record: time, person or agent, deploy or session, operation summary, status and checkpoint ID. It does not receive your URL, credentials, SQL, row data or checkpoint files. Offline records remain in `.dbdock/records/`; `dbdock sync` retries uploads without running the change again. Existing `dbdock.config.json` users also retain optional non-secret configuration sync.
+
+```bash
+npx dbdock restore cp_CHECKPOINT_ID --yes
+```
+
+Replace the ID with the checkpoint from the record and use the same target, storage and encryption key. Restoring this checkpoint removes writes made after the checkpoint. DBDock saves another checkpoint first. Stop other writers during restore.
+
+Only changes through the guard are recorded. A command must use the same target as DBDock; the wrapper cannot inspect another tool's settings. An agent with direct database access can bypass the guard. Existing backup, copy, migration and Cloud connection tools remain available separately.
+
+[Guard reference](https://docs.dbdock.xyz/cli/run), [guarded SDK](https://docs.dbdock.xyz/sdk/guarded-changes), [local agent setup](https://docs.dbdock.xyz/cloud/mcp).
 
 ## Table of contents
 
 - [Install](#install)
 - [Features](#features)
-- [Quick start](#quick-start)
+- [Existing backup tools](#existing-backup-tools)
 - [Commands](#commands)
-- [Cloud Sync](#cloud-sync)
+- [Cloud records and optional configuration sync](#cloud-records-and-optional-configuration-sync)
 - [Cross-database migration](#cross-database-migration)
 - [Storage providers](#storage-providers)
 - [Programmatic usage (SDK)](#programmatic-usage-sdk)
@@ -63,7 +75,7 @@ npm install -g dbdock
 <summary>Install PostgreSQL client tools</summary>
 
 `pg_dump` refuses to dump a server newer than itself, so install a client whose
-**major version is at or above your server's** — replace `18` below with your
+**major version is at or above your server's**. replace `18` below with your
 server major if it is higher. dbdock finds every installed client and uses the
 newest one, so keeping older majors around is harmless.
 
@@ -90,18 +102,18 @@ export DBDOCK_PG_BIN_DIR=/usr/lib/postgresql/18/bin
 
 ## Features
 
-- **Backups & restores** — PostgreSQL, MySQL/MariaDB, SQL Server, and Redis, with encryption and compression
-- **Database copies** — clone prod → staging → local with a single command
-- **Cross-database migration** — MongoDB ↔ PostgreSQL with schema mapping, dry runs, and incremental sync
-- **Multi-cloud storage** — local disk, AWS S3, Cloudflare R2, Cloudinary — swap with one line
-- **Cloud Sync** — link a project to [DBDock Cloud](https://dbdock.xyz) and monitor from the dashboard
-- **Security-first** — AES-256-GCM encryption, env-var secrets, credential masking, `.pgpass` support
-- **Retention policies** — auto-cleanup by count or age, with a safety net
-- **Alerts & schedules** — email and Slack notifications, cron-based automation
-- **TypeScript SDK** — use DBDock programmatically in any Node.js app
-- **MIT licensed** — free forever, self-hosted, no vendor lock-in
+- **Backups & restores**. PostgreSQL, MySQL/MariaDB, SQL Server, and Redis, with encryption and compression
+- **Database copies**. clone prod → staging → local with a single command
+- **Cross-database migration**. MongoDB ↔ PostgreSQL with schema mapping, dry runs, and incremental sync
+- **Multi-cloud storage**. local disk, AWS S3, Cloudflare R2, Cloudinary. swap with one line
+- **Cloud Sync**. link a project to [DBDock Cloud](https://dbdock.xyz) and monitor from the dashboard
+- **Security-first**. AES-256-GCM encryption, env-var secrets, credential masking, `.pgpass` support
+- **Retention policies**. auto-cleanup by count or age, with a safety net
+- **Alerts & schedules**. email and Slack notifications, cron-based automation
+- **TypeScript SDK**. use DBDock programmatically in any Node.js app
+- **MIT licensed**. free forever, self-hosted, no vendor lock-in
 
-## Quick start
+## Existing backup tools
 
 ```bash
 npx dbdock init      # Interactive setup (30 seconds)
@@ -116,6 +128,8 @@ See the [Quickstart guide](https://docs.dbdock.xyz/get-started/quickstart) for a
 
 | Command | Purpose |
 |---|---|
+| [`run`](https://docs.dbdock.xyz/cli/run) | Checkpoint and guard a local command or SQL file |
+| [`link`](https://docs.dbdock.xyz/cli/link) | Link this directory without a database URL |
 | [`init`](https://docs.dbdock.xyz/cli/init) | Interactive setup wizard (optionally links to the cloud) |
 | [`backup`](https://docs.dbdock.xyz/cli/backup) | Create a backup |
 | [`restore`](https://docs.dbdock.xyz/cli/restore) | Restore a backup (with filtering) |
@@ -138,18 +152,18 @@ See the [Quickstart guide](https://docs.dbdock.xyz/get-started/quickstart) for a
 
 Full reference at [docs.dbdock.xyz/cli/overview](https://docs.dbdock.xyz/cli/overview).
 
-## Cloud Sync
+## Cloud records and optional configuration sync
 
 Link a local project to your [DBDock Cloud](https://dbdock.xyz) dashboard so you can automate from the terminal and monitor from the browser.
 
 ```bash
-npx dbdock login     # Browser OAuth sign-in
-npx dbdock init      # Links this project to the dashboard
-npx dbdock sync      # Push local config to the cloud
-npx dbdock open      # Open it in the browser
+npx dbdock login
+npx dbdock link
+npx dbdock sync
+npx dbdock open --print
 ```
 
-**Only non-secret metadata syncs** — database passwords, storage keys, encryption secrets, and webhook URLs never leave your machine. See [Data handling](https://docs.dbdock.xyz/cloud-sync/data-handling) for the exact contract.
+Completed guard records contain no database URL, raw SQL or row data. Existing `dbdock.config.json` users also retain non-secret configuration sync, including host and database names. See [Data handling](https://docs.dbdock.xyz/cloud-sync/data-handling) for the exact contract.
 
 ## Cross-database migration
 
@@ -165,19 +179,19 @@ See [docs.dbdock.xyz/migration](https://docs.dbdock.xyz/migration/overview).
 
 ## Storage providers
 
-DBDock writes backups to your storage of choice:
+These destinations apply to existing backup commands. The guard supports local disk and your S3/R2 bucket:
 
-- [DBDock Storage](https://docs.dbdock.xyz/storage/managed) — managed, zero setup, included with your plan (recommended)
-- [Local disk](https://docs.dbdock.xyz/storage/local) — fastest, single server
-- [AWS S3](https://docs.dbdock.xyz/storage/s3) — industry standard, any S3-compatible service
-- [Cloudflare R2](https://docs.dbdock.xyz/storage/r2) — zero egress fees
-- [Cloudinary](https://docs.dbdock.xyz/storage/cloudinary) — generous free tier
+- [DBDock Storage](https://docs.dbdock.xyz/storage/managed). managed, zero setup, included with your plan (recommended)
+- [Local disk](https://docs.dbdock.xyz/storage/local). fastest, single server
+- [AWS S3](https://docs.dbdock.xyz/storage/s3). industry standard, any S3-compatible service
+- [Cloudflare R2](https://docs.dbdock.xyz/storage/r2). zero egress fees
+- [Cloudinary](https://docs.dbdock.xyz/storage/cloudinary). generous free tier
 
 Swap providers by changing one line in `dbdock.config.json`.
 
 ### DBDock Storage (managed)
 
-Pick **DBDock Storage** in `dbdock init` and your backups upload straight to storage included with your plan — no bucket, no keys. It needs a signed-in account (`dbdock login`); uploads and downloads use short-lived presigned URLs, so your credentials never touch a bucket.
+Pick **DBDock Storage** in `dbdock init` and your backups upload straight to storage included with your plan. no bucket, no keys. It needs a signed-in account (`dbdock login`); uploads and downloads use short-lived presigned URLs, so your credentials never touch a bucket.
 
 ```bash
 npx dbdock login       # one-time browser sign-in
@@ -187,6 +201,21 @@ npx dbdock storage     # see how much space you've used
 ```
 
 ## Programmatic usage (SDK)
+
+```typescript
+import { runGuardedChange, restoreCheckpoint } from 'dbdock';
+
+const result = await runGuardedChange(() => runYourMigration(), {
+  kind: 'migration',
+  actor: 'Release runner',
+});
+await restoreCheckpoint(result.record.checkpointId, {
+  confirmLaterWrites: true,
+});
+```
+
+`runYourMigration` is your own function and must use the same local target. Ask the operator to confirm removal of later writes before restoring. Existing SDK backup functions remain available:
+
 
 ```javascript
 const { createDBDock, BackupService } = require('dbdock');
@@ -199,7 +228,7 @@ const result = await backups.createBackup({
   encrypt: true,
 });
 
-console.log(`Backup ${result.metadata.id} — ${result.metadata.formattedSize}`);
+console.log(`Backup ${result.metadata.id}. ${result.metadata.formattedSize}`);
 ```
 
 Full SDK reference at [docs.dbdock.xyz/sdk](https://docs.dbdock.xyz/sdk/overview).
@@ -211,7 +240,7 @@ Full SDK reference at [docs.dbdock.xyz/sdk](https://docs.dbdock.xyz/sdk/overview
 - Credential masking in logs
 - `.pgpass` support for host-level credential isolation
 - Strict mode (`DBDOCK_STRICT_MODE=true`) refuses any config file that contains secrets
-- Cloud Sync uploads metadata only — never credentials
+- Cloud Sync uploads metadata only. never credentials
 
 See [docs.dbdock.xyz/security](https://docs.dbdock.xyz/security/overview) and [SECURITY.md](SECURITY.md) for vulnerability reporting.
 
@@ -231,4 +260,4 @@ Created and maintained by [Naheem Olaide](https://github.com/appdever01).
 
 ## License
 
-[MIT](LICENSE) — free forever, self-hosted, no vendor lock-in.
+[MIT](LICENSE). free forever, self-hosted, no vendor lock-in.

@@ -1,3 +1,4 @@
+import { syncRecords } from '@/changes/records';
 import { Logger } from '@nestjs/common';
 import { logger } from '../utils/logger';
 import {
@@ -42,6 +43,12 @@ export async function syncCommand(
       process.exitCode = 1;
       return;
     }
+
+    const records = await syncRecords();
+    logger.info(
+      `Change records: ${records.sent} sent, ${records.pending} pending.`,
+    );
+    if (records.pending) process.exitCode = 1;
 
     const result = await syncPush(process.cwd(), { force: options.force });
 

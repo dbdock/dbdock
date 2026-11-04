@@ -1,7 +1,7 @@
 {
   "name": "dbdock",
-  "version": "1.2.10",
-  "description": "Enterprise-grade database backup, restore, and cross-database migration (MongoDB ↔ PostgreSQL). CLI-first tool with encryption, compression, and multi-cloud storage.",
+  "version": "1.3.0",
+  "description": "Checkpoint database changes locally, keep a change record and restore checkpoints. CLI and SDK for PostgreSQL and MySQL.",
   "author": "Naheem Olaide <naheemolaide@gmail.com>",
   "private": false,
   "license": "MIT",
@@ -33,8 +33,6 @@
     "s3",
     "cloudflare-r2",
     "cloudinary",
-    "pitr",
-    "point-in-time-recovery",
     "database-backup",
     "backup-tool",
     "cli-tool",
@@ -59,7 +57,7 @@
   },
   "scripts": {
     "prebuild": "rimraf dist",
-    "build": "nest build",
+    "build": "nest build && tsc-alias",
     "prepack": "npm run build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
@@ -135,6 +133,7 @@
     "ts-jest": "^29.2.5",
     "ts-loader": "^9.5.2",
     "ts-node": "^10.9.2",
+    "tsc-alias": "^1.9.7",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.20.0"
@@ -162,7 +161,8 @@
     "coverageDirectory": "coverage",
     "testEnvironment": "node",
     "moduleNameMapper": {
-      "^src/(.*)$": "<rootDir>/src/$1"
+      "^src/(.*)$": "<rootDir>/src/$1",
+      "^@/(.*)$": "<rootDir>/src/$1"
     }
   }
 }
