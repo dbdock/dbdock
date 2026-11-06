@@ -6,7 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `dbdock undo` puts the database back to the checkpoint saved before the last change, after showing what it will replace and asking; `dbdock undo <checkpoint>` picks an older one, and running `undo` again undoes the undo
+- `dbdock changes` lists recent changes with who made them, their status and their checkpoint, from this machine and, when linked, DBDock Cloud
+- `dbdock run` with no command runs `prisma migrate deploy` or `drizzle-kit migrate` when the project uses Prisma or Drizzle
+
 ### Changed
+- `dbdock run` prints each step: the checkpoint with its size, time, location and whether it is encrypted, the change summary, whether the record reached DBDock Cloud, and how to undo
+- When a record does not reach DBDock Cloud, the CLI says why (not linked, not signed in, Cloud unreachable, or what Cloud answered) instead of always suggesting `dbdock link`
+- `dbdock restore <checkpoint-id>` asks before restoring in a terminal; without a terminal it needs `--yes` and says so, instead of mentioning an SDK option
 - `dbdock restore <checkpoint-id>` prints what it will replace and what it will leave alone before it starts, and exits with code 73 when it refuses to run
 - Checkpoints saved by 1.3.0 hold the whole database and are refused for in-place restore on PostgreSQL, with an explanation; new checkpoints are not affected
 - `lockDatabase(config).reset()` no longer drops platform schemas such as Supabase's `auth`, even when the connecting role is a member of their owner, and accepts a list of schemas to empty

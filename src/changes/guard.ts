@@ -4,13 +4,15 @@ import type { GuardOptions, GuardResult, ChangeRecord } from '@/changes/types';
 import { guardConfig } from '@/changes/config';
 import { saveCheckpoint } from '@/changes/storage';
 import { recordMetadata } from '@/changes/metadata';
-import { saveRecord, sendRecord } from '@/changes/records';
+import { saveRecord, sendRecord, type SendResult } from '@/changes/records';
 import { lockDatabase, type LocalDatabase } from '@/changes/database';
 
 export class GuardedChangeError extends Error {
   constructor(
     readonly record: ChangeRecord,
     cause: unknown,
+    // Whether the failed change's record reached DBDock Cloud.
+    readonly delivery: SendResult = { sent: false },
   ) {
     super(
       `${cause instanceof Error ? cause.message : 'Change failed.'}\nCheckpoint: ${record.checkpointId}\nRecord: ${record.id}`,
@@ -41,7 +43,12 @@ export async function runGuardedChange<T>(
       throw new Error(
         'This database user owns no schema DBDock can checkpoint, so the change was not run.',
       );
+    const checkpointStarted = Date.now();
     const checkpoint = await saveCheckpoint(config, scope);
+    options.onCheckpoint?.(checkpoint, {
+      durationMs: Date.now() - checkpointStarted,
+      storage: config.storage.provider as 'local' | 's3' | 'r2',
+    });
     const metadata = recordMetadata(options, cwd);
     const secrets = [
       config.database.password,
@@ -80,8 +87,11 @@ export async function runGuardedChange<T>(
       record.status = 'failed';
       record.completedAt = new Date().toISOString();
       await saveRecord(cwd, record);
-      await sendRecord(cwd, record);
-      throw new GuardedChangeError(record, error);
+      throw new GuardedChangeError(
+        record,
+        error,
+        await sendRecord(cwd, record),
+      );
     }
     if (before) {
       try {
@@ -93,8 +103,13 @@ export async function runGuardedChange<T>(
     }
     record.completedAt = new Date().toISOString();
     await saveRecord(cwd, record);
-    const synced = await sendRecord(cwd, record);
-    return { value, record, synced };
+    const delivery = await sendRecord(cwd, record);
+    return {
+      value,
+      record,
+      synced: delivery.sent,
+      syncError: delivery.reason,
+    };
   } finally {
     await database.close();
   }

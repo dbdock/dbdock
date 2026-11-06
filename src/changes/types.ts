@@ -67,10 +67,20 @@ export interface GuardOptions {
   session?: string;
   summary?: string;
   restoredCheckpointId?: string;
+  // Called once the checkpoint is saved, before the change runs.
+  onCheckpoint?: (
+    checkpoint: Checkpoint,
+    details: {
+      durationMs: number;
+      storage: ChangeRecord['checkpointStorage'];
+    },
+  ) => void;
 }
 
 export interface GuardResult<T> {
   value: T;
   record: ChangeRecord;
   synced: boolean;
+  // Why the record did not reach DBDock Cloud, when it did not.
+  syncError?: string;
 }

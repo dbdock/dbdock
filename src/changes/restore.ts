@@ -8,10 +8,14 @@ import { refusedSchemas } from '@/standalone/database-lock';
 import { computeKeyFingerprint } from '@/crypto/backup-format';
 
 export interface RestoreCheckpointOptions extends GuardOptions {
+  // Accepts up front that writes made after the checkpoint are lost.
   confirmLaterWrites?: boolean;
   // Called with what the restore will replace and leave alone, after the
   // checks pass and before anything is changed.
   onPlan?: (plan: RestorePlan) => void;
+  // Asked after onPlan, in place of confirmLaterWrites. Resolving false
+  // cancels the restore before anything is changed.
+  confirm?: (plan: RestorePlan) => Promise<boolean>;
 }
 
 const POSTGRES_TYPES = ['postgres', 'postgresql'];
@@ -20,9 +24,9 @@ export async function restoreCheckpoint(
   id: string,
   options: RestoreCheckpointOptions = {},
 ): Promise<GuardResult<void>> {
-  if (!options.confirmLaterWrites)
-    throw new Error(
-      `${RESTORE_WARNING} Confirm with confirmLaterWrites: true.`,
+  if (!options.confirmLaterWrites && !options.confirm)
+    throw new RestoreRefusedError(
+      `${RESTORE_WARNING} Pass confirmLaterWrites: true or a confirm callback.`,
     );
   const cwd = options.cwd ?? process.cwd();
   const config = guardConfig(cwd, options.config);
@@ -78,12 +82,21 @@ export async function restoreCheckpoint(
         throw new RestoreRefusedError(
           `DBDock may not replace ${refused.join(', ')}: the schema belongs to the platform or another role. Nothing was changed.`,
         );
-      options.onPlan?.({
+      const plan: RestorePlan = {
         replace: postgres ? replace : existing,
         keep: postgres
           ? existing.filter((name) => !replace.includes(name))
           : [],
-      });
+      };
+      options.onPlan?.(plan);
+      if (
+        !options.confirmLaterWrites &&
+        options.confirm &&
+        !(await options.confirm(plan))
+      )
+        throw new RestoreRefusedError(
+          'Restore cancelled. Nothing was changed.',
+        );
     },
   );
 }

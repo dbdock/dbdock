@@ -2,6 +2,8 @@
 
 import { Command } from 'commander';
 import { runCommand } from '@/cli/commands/run';
+import { undoCommand } from '@/cli/commands/undo';
+import { changesCommand } from '@/cli/commands/changes';
 import { linkCommand } from '@/cli/commands/link';
 import { restoreCheckpointCommand } from '@/cli/commands/restore-checkpoint';
 import { initCommand } from './commands/init';
@@ -97,12 +99,36 @@ program
 
 program
   .command('run')
-  .description('Save a checkpoint, run a change locally and keep its record')
-  .argument('[command...]', 'Migration command and arguments after --')
+  .description(
+    'Save a checkpoint, run your migration and keep a record of the change',
+  )
+  .argument(
+    '[command...]',
+    'Migration command after --. Leave it out to run Prisma or Drizzle migrations',
+  )
   .option('--sql <file>', 'Run a local SQL file')
   .option('--actor <name>', 'Person or agent name')
   .option('--agent <session>', 'Agent session id')
   .action(runCommand);
+
+program
+  .command('undo [checkpoint-id]')
+  .description(
+    'Put the database back to the checkpoint saved before the last change',
+  )
+  .option(
+    '--yes',
+    'Skip the question; writes made after the checkpoint are lost',
+  )
+  .action(undoCommand);
+
+program
+  .command('changes')
+  .description('List recent changes, who made them and their checkpoints')
+  .option('--limit <count>', 'How many to show (default 10)', (value) =>
+    parseInt(value, 10),
+  )
+  .action(changesCommand);
 
 program
   .command('test')
