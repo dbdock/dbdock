@@ -2,16 +2,35 @@ import { Client } from 'pg';
 import { createConnection, type RowDataPacket } from 'mysql2/promise';
 import type { CLIConfig } from '@/cli/utils/config';
 import { targetHash } from '@/changes/storage';
+import type { DumpScope } from '@/engines/engine.types';
+import {
+  extensionsInSchemas,
+  listSchemas,
+  resetPostgres,
+  restorableSchemas,
+} from '@/standalone/database-lock';
 
 export interface SchemaSnapshot {
   tables: string[];
   columns: Record<string, string>;
 }
 
+export interface SchemaLists {
+  // Every schema that is not part of the database engine itself.
+  existing: string[];
+  // The ones a checkpoint may hold and a restore may replace.
+  restorable: string[];
+}
+
 export interface LocalDatabase {
   schema: () => Promise<SchemaSnapshot>;
+  // What a checkpoint of this database captures.
+  scope(): Promise<Required<DumpScope>>;
+  schemaLists(): Promise<SchemaLists>;
   execute(sql: string): Promise<void>;
-  reset(): Promise<void>;
+  // Empties `schemas` so a restore recreates them exactly (Postgres). MySQL
+  // empties the whole database, which is its only schema.
+  reset(schemas?: string[]): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -79,31 +98,28 @@ export async function lockDatabase(config: CLIConfig): Promise<LocalDatabase> {
           columns,
         };
       },
+      scope: async () => {
+        const schemas = await restorableSchemas(client);
+        return {
+          schemas,
+          extensions: await extensionsInSchemas(client, schemas),
+        };
+      },
+      schemaLists: async () => ({
+        existing: await listSchemas(client),
+        restorable: await restorableSchemas(client),
+      }),
       execute: async (sql) => {
         await client.query(sql);
       },
-      reset: async () => {
-        const schemas = await client.query<{ nspname: string }>(
-          "SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname <> 'information_schema'",
-        );
-        await client.query('BEGIN');
-        try {
-          for (const schema of schemas.rows)
-            await client.query(
-              `DROP SCHEMA ${quoteIdentifier(schema.nspname, '"')} CASCADE`,
-            );
-          await client.query('CREATE SCHEMA public');
-          await client.query('COMMIT');
-        } catch (error) {
-          await client.query('ROLLBACK');
-          throw error;
-        }
-      },
+      reset: (schemas) => resetPostgres(client, schemas),
       close: async () => {
         await client.end();
       },
     };
   }
+  // MySQL has no schemas inside a database; the database is the whole scope.
+  const databaseOnly = db.database ? [db.database] : [];
   const client = await createConnection({
     host: db.host,
     port: db.port,
@@ -140,6 +156,9 @@ export async function lockDatabase(config: CLIConfig): Promise<LocalDatabase> {
         columns,
       };
     },
+    scope: () => Promise.resolve({ schemas: databaseOnly, extensions: [] }),
+    schemaLists: () =>
+      Promise.resolve({ existing: databaseOnly, restorable: databaseOnly }),
     execute: async (sql) => {
       await client.query(sql);
     },

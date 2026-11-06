@@ -9,6 +9,7 @@ import { CHECKPOINT_PREFIX } from '@/changes/types';
 import { createBackupStandalone } from '@/standalone/backup-standalone';
 import { S3StorageAdapter } from '@/storage/adapters/s3.adapter';
 import { computeKeyFingerprint } from '@/crypto/backup-format';
+import type { DumpScope } from '@/engines/engine.types';
 
 const CHECKPOINT_ID_PATTERN = /^cp_[a-zA-Z0-9_-]{21}$/;
 
@@ -67,11 +68,19 @@ export async function atomicJson(path: string, value: unknown): Promise<void> {
   await rename(temporary, path);
 }
 
-export async function saveCheckpoint(config: CLIConfig): Promise<Checkpoint> {
+export async function saveCheckpoint(
+  config: CLIConfig,
+  scope: Required<DumpScope>,
+): Promise<Checkpoint> {
   if (config.storage.provider === 'local')
     await ignoreArtifacts(config.storage.local!.path);
   const id = `cp_${nanoid()}`;
-  const result = await createBackupStandalone(config);
+  const result = await createBackupStandalone(
+    config,
+    undefined,
+    undefined,
+    scope,
+  );
   if (config.storage.provider === 'local') {
     const dump = await open(result.storageKey, 'r');
     try {
@@ -94,6 +103,8 @@ export async function saveCheckpoint(config: CLIConfig): Promise<Checkpoint> {
     keyFingerprint: key
       ? computeKeyFingerprint(Buffer.from(key, 'hex')).toString('hex')
       : null,
+    schemas: scope.schemas,
+    extensions: scope.extensions,
   };
   const manifest = `${CHECKPOINT_PREFIX}/${id}.json`;
   if (config.storage.provider === 'local') {
@@ -107,6 +118,13 @@ export async function saveCheckpoint(config: CLIConfig): Promise<Checkpoint> {
     );
   }
   return checkpoint;
+}
+
+function optionalNames(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (Array.isArray(value) && value.every((name) => typeof name === 'string'))
+  );
 }
 
 export async function readCheckpoint(
@@ -137,7 +155,9 @@ export async function readCheckpoint(
     checkpoint.size <= 0 ||
     typeof checkpoint.storageKey !== 'string' ||
     typeof checkpoint.encrypted !== 'boolean' ||
-    typeof checkpoint.compressed !== 'boolean'
+    typeof checkpoint.compressed !== 'boolean' ||
+    !optionalNames(checkpoint.schemas) ||
+    !optionalNames(checkpoint.extensions)
   )
     throw new Error('Invalid checkpoint manifest.');
   if (checkpoint.id !== id || checkpoint.targetHash !== targetHash(config))

@@ -7,6 +7,7 @@ import { join } from 'path';
 import { nanoid } from 'nanoid';
 import { v2 as cloudinary } from 'cloudinary';
 import { getEngine } from '@/engines';
+import type { DumpScope } from '@/engines/engine.types';
 import { formatFileSize } from '@/utils/format';
 import { S3StorageAdapter } from '@/storage/adapters/s3.adapter';
 import { ManagedStorageAdapter } from '@/storage/adapters/managed.adapter';
@@ -34,6 +35,7 @@ export async function createBackupStandalone(
   config: CLIConfig,
   callbacks?: BackupProgressCallback,
   deps?: BackupStandaloneDeps,
+  scope?: DumpScope,
 ): Promise<BackupResult> {
   const started = Date.now();
   const backupId = nanoid();
@@ -48,7 +50,7 @@ export async function createBackupStandalone(
   let storageKey = local ? join(base, filename) : `dbdock_backups/${filename}`;
   let downloadUrl: string | undefined;
   try {
-    await dumpToFile(config, path, callbacks);
+    await dumpToFile(config, path, callbacks, scope);
     const { size } = await stat(path);
     const digest = createHash('sha256');
     for await (const chunk of createReadStream(path))

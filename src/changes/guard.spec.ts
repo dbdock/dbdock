@@ -33,6 +33,10 @@ const config: CLIConfig = {
 describe('Guarded changes', () => {
   const database = {
     schema: jest.fn().mockResolvedValue({ tables: [], columns: {} }),
+    scope: jest
+      .fn()
+      .mockResolvedValue({ schemas: ['public'], extensions: ['citext'] }),
+    schemaLists: jest.fn(),
     execute: jest.fn(),
     reset: jest.fn(),
     close: jest.fn().mockResolvedValue(undefined),
@@ -69,6 +73,38 @@ describe('Guarded changes', () => {
     );
     expect(change).not.toHaveBeenCalled();
     expect(saveRecord).not.toHaveBeenCalled();
+    expect(database.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('checkpoints only the schemas and extensions a restore may replace', async () => {
+    await runGuardedChange(jest.fn(), { config, cwd });
+    expect(saveCheckpoint).toHaveBeenCalledWith(expect.any(Object), {
+      schemas: ['public'],
+      extensions: ['citext'],
+    });
+  });
+
+  it('refuses the change when the user owns no schema it can checkpoint', async () => {
+    database.scope.mockResolvedValueOnce({ schemas: [], extensions: [] });
+    const change = jest.fn();
+    await expect(runGuardedChange(change, { config, cwd })).rejects.toThrow(
+      'owns no schema DBDock can checkpoint',
+    );
+    expect(saveCheckpoint).not.toHaveBeenCalled();
+    expect(change).not.toHaveBeenCalled();
+    expect(database.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves no checkpoint and no record when the prepare check refuses', async () => {
+    const change = jest.fn();
+    await expect(
+      runGuardedChange(change, { config, cwd }, () =>
+        Promise.reject(new Error('Refused')),
+      ),
+    ).rejects.toThrow('Refused');
+    expect(saveCheckpoint).not.toHaveBeenCalled();
+    expect(saveRecord).not.toHaveBeenCalled();
+    expect(change).not.toHaveBeenCalled();
     expect(database.close).toHaveBeenCalledTimes(1);
   });
 

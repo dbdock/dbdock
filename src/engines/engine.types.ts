@@ -16,8 +16,25 @@ export interface DumpHandle {
   stdout: Readable;
 }
 
-export interface DumpSpawnOptions {
+// Narrows a dump to these schemas and extensions. Empty or missing means the
+// whole database. Engines without schemas ignore it.
+export interface DumpScope {
+  schemas?: string[];
+  extensions?: string[];
+}
+
+export interface DumpSpawnOptions extends DumpScope {
   format?: string;
+}
+
+export interface RestoreSpawnOptions {
+  // Drop each object before recreating it. Turn off when the target schemas
+  // were already emptied: with it on, pg_restore drops and recreates public
+  // itself, losing the owner and grants the reset carried across.
+  clean?: boolean;
+  // Restore grants and default privileges from the archive. Safe only when
+  // restoring onto the server the archive came from, where the roles exist.
+  acl?: boolean;
 }
 
 export interface DatabaseEngine {
@@ -29,7 +46,10 @@ export interface DatabaseEngine {
 
   fileExtension(format?: string): string;
   spawnDump(conn: DbConnection, options: DumpSpawnOptions): DumpHandle;
-  spawnRestore(conn: DbConnection): ChildProcessWithoutNullStreams;
+  spawnRestore(
+    conn: DbConnection,
+    options?: RestoreSpawnOptions,
+  ): ChildProcessWithoutNullStreams;
   testConnection(conn: DbConnection): Promise<void>;
   getStats(conn: DbConnection): Promise<DatabaseStats>;
   formatDumpError(

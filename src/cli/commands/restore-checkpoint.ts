@@ -1,5 +1,5 @@
 import { restoreCheckpoint } from '@/changes/restore';
-import { RESTORE_WARNING } from '@/changes/types';
+import { RESTORE_WARNING, RestoreRefusedError } from '@/changes/types';
 
 export async function restoreCheckpointCommand(
   id: string,
@@ -9,6 +9,12 @@ export async function restoreCheckpointCommand(
   try {
     const result = await restoreCheckpoint(id, {
       confirmLaterWrites: options.yes,
+      onPlan: ({ replace, keep }) => {
+        console.error(`Will replace: ${replace.join(', ')}`);
+        console.error(
+          `Will not touch: ${keep.length ? keep.join(', ') : 'nothing else'}`,
+        );
+      },
     });
     console.log(
       `Restored ${id}. Checkpoint before restore: ${result.record.checkpointId}`,
@@ -19,6 +25,6 @@ export async function restoreCheckpointCommand(
       );
   } catch (error) {
     console.error(error instanceof Error ? error.message : 'Restore failed.');
-    process.exitCode = 1;
+    process.exitCode = error instanceof RestoreRefusedError ? 73 : 1;
   }
 }

@@ -9,7 +9,9 @@ type DbConnection = CLIConfig['database'];
 export interface DatabaseLock {
   // Drops every object a restore will recreate, so the restored database
   // matches the backup exactly instead of keeping objects created after it.
-  reset(): Promise<void>;
+  // With `schemas`, drops only those (Postgres); a schema the role may not
+  // replace makes it throw before anything is dropped.
+  reset(schemas?: string[]): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -99,7 +101,7 @@ async function lockPostgres(conn: DbConnection): Promise<DatabaseLock> {
 
   let closed = false;
   return {
-    async reset() {
+    async reset(schemas?: string[]) {
       if (closed)
         throw new Error('This database lock has already been released.');
       if (lostConnection) {
@@ -107,7 +109,7 @@ async function lockPostgres(conn: DbConnection): Promise<DatabaseLock> {
           `Lost the connection that holds the restore lock: ${lostConnection.message}`,
         );
       }
-      await resetPostgres(client);
+      await resetPostgres(client, schemas);
     },
     async close() {
       if (closed) return;
@@ -120,8 +122,35 @@ async function lockPostgres(conn: DbConnection): Promise<DatabaseLock> {
   };
 }
 
-// Schemas this role may drop, minus system and extension-owned ones. pg_dump
-// captures everything this role can read, so the restore recreates them.
+// Schemas a hosting platform owns and runs itself (Supabase's auth, storage and
+// friends). DBDock never captures or drops them, even when the connecting role
+// could: membership in the platform's role would otherwise let a restore wipe
+// sign-ins and files the checkpoint never held.
+export const MANAGED_SCHEMAS: ReadonlySet<string> = new Set([
+  '_analytics',
+  '_realtime',
+  'auth',
+  'cron',
+  'extensions',
+  'graphql',
+  'graphql_public',
+  'information_schema',
+  'net',
+  'pgbouncer',
+  'pgsodium',
+  'pgsodium_masks',
+  'realtime',
+  'storage',
+  'supabase_functions',
+  'supabase_migrations',
+  'vault',
+]);
+
+export function isManagedSchema(name: string): boolean {
+  return MANAGED_SCHEMAS.has(name) || name.startsWith('pg_');
+}
+
+// Schemas this role may drop, minus system and extension-owned ones.
 const DROPPABLE_SCHEMAS_SQL = `
   SELECT n.nspname AS name, format('DROP SCHEMA %I CASCADE', n.nspname) AS stmt
   FROM pg_namespace n
@@ -155,13 +184,83 @@ const PUBLIC_SCHEMA_OWNER_SQL = `
   FROM pg_namespace n JOIN pg_roles r ON r.oid = n.nspowner
   WHERE n.nspname = 'public'`;
 
-async function resetPostgres(client: Client): Promise<void> {
+const ALL_SCHEMAS_SQL = `
+  SELECT nspname AS name FROM pg_namespace
+  WHERE nspname <> 'information_schema' AND nspname NOT LIKE 'pg\\_%'
+  ORDER BY nspname`;
+
+const EXTENSIONS_IN_SCHEMAS_SQL = `
+  SELECT e.extname AS name
+  FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace
+  WHERE n.nspname = ANY($1::text[])
+  ORDER BY e.extname`;
+
+type Queryable = Pick<Client, 'query'>;
+
+// Every schema that is not part of Postgres itself.
+export async function listSchemas(client: Queryable): Promise<string[]> {
+  const { rows } = await client.query<{ name: string }>(ALL_SCHEMAS_SQL);
+  return rows.map((row) => row.name);
+}
+
+// The schemas a checkpoint may hold and a restore may replace: dropable by
+// this role, not owned by an extension, not managed by the platform.
+export async function restorableSchemas(client: Queryable): Promise<string[]> {
+  const { rows } = await client.query<{ name: string }>(DROPPABLE_SCHEMAS_SQL);
+  return rows.map((row) => row.name).filter((name) => !isManagedSchema(name));
+}
+
+// Extensions installed into these schemas. Dropping a schema drops them too,
+// so a checkpoint of the schema has to carry their CREATE EXTENSION.
+export async function extensionsInSchemas(
+  client: Queryable,
+  schemas: string[],
+): Promise<string[]> {
+  const { rows } = await client.query<{ name: string }>(
+    EXTENSIONS_IN_SCHEMAS_SQL,
+    [schemas],
+  );
+  return rows.map((row) => row.name);
+}
+
+// Schemas in `schemas` that exist but must not be replaced. A schema that no
+// longer exists is fine: the restore creates it.
+export function refusedSchemas(
+  schemas: string[],
+  existing: string[],
+  restorable: string[],
+): string[] {
+  return schemas.filter(
+    (name) =>
+      isManagedSchema(name) ||
+      (existing.includes(name) && !restorable.includes(name)),
+  );
+}
+
+export async function resetPostgres(
+  client: Client,
+  schemas?: string[],
+): Promise<void> {
   await client.query('BEGIN');
   try {
-    const drops = await client.query<{ name: string; stmt: string }>(
-      DROPPABLE_SCHEMAS_SQL,
-    );
-    const dropsPublic = drops.rows.some((row) => row.name === 'public');
+    const droppable = (
+      await client.query<{ name: string; stmt: string }>(DROPPABLE_SCHEMAS_SQL)
+    ).rows.filter((row) => !isManagedSchema(row.name));
+    if (schemas) {
+      const refused = refusedSchemas(
+        schemas,
+        await listSchemas(client),
+        droppable.map((row) => row.name),
+      );
+      if (refused.length)
+        throw new Error(
+          `DBDock may not replace ${refused.join(', ')}: the schema belongs to the platform or another role.`,
+        );
+    }
+    const drops = schemas
+      ? droppable.filter((row) => schemas.includes(row.name))
+      : droppable;
+    const dropsPublic = drops.some((row) => row.name === 'public');
     const grants = dropsPublic
       ? (await client.query<{ stmt: string }>(PUBLIC_SCHEMA_GRANTS_SQL)).rows
       : [];
@@ -169,7 +268,7 @@ async function resetPostgres(client: Client): Promise<void> {
       ? (await client.query<{ stmt: string }>(PUBLIC_SCHEMA_OWNER_SQL)).rows[0]
       : undefined;
 
-    for (const { stmt } of drops.rows) await client.query(stmt);
+    for (const { stmt } of drops) await client.query(stmt);
 
     if (dropsPublic) {
       await client.query('CREATE SCHEMA public');

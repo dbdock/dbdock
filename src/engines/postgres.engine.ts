@@ -6,6 +6,7 @@ import {
   DbConnection,
   DumpHandle,
   DumpSpawnOptions,
+  RestoreSpawnOptions,
 } from './engine.types';
 import {
   EngineErrorContext,
@@ -118,6 +119,13 @@ function errorContext(conn?: DbConnection): EngineErrorContext {
   };
 }
 
+// pg_dump reads -n and -e as patterns: quoting matches the name exactly, so a
+// schema called "a.b" or "Sales" is not read as a wildcard or folded to lower
+// case. A double quote inside the name is written twice.
+export function exactPattern(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`;
+}
+
 const RESTORE_IGNORE_PATTERNS = [
   'NOTICE',
   'WARNING',
@@ -159,6 +167,11 @@ export const postgresEngine: DatabaseEngine = {
       '-F',
       FORMAT_FLAG[format] || 'c',
       '--no-password',
+      ...(options.schemas ?? []).flatMap((name) => ['-n', exactPattern(name)]),
+      ...(options.extensions ?? []).flatMap((name) => [
+        '-e',
+        exactPattern(name),
+      ]),
     ];
     const process = spawn(resolvePgBin('pg_dump'), args, {
       env: buildEnv(conn),
@@ -166,7 +179,11 @@ export const postgresEngine: DatabaseEngine = {
     return { process, stdout: process.stdout };
   },
 
-  spawnRestore(conn): ChildProcessWithoutNullStreams {
+  spawnRestore(
+    conn,
+    options: RestoreSpawnOptions = {},
+  ): ChildProcessWithoutNullStreams {
+    const { clean = true, acl = false } = options;
     const args = [
       '-h',
       conn.host || 'localhost',
@@ -178,10 +195,9 @@ export const postgresEngine: DatabaseEngine = {
       conn.database || 'postgres',
       '-F',
       'c',
-      '--clean',
-      '--if-exists',
+      ...(clean ? ['--clean', '--if-exists'] : []),
       '--no-owner',
-      '--no-acl',
+      ...(acl ? [] : ['--no-acl']),
       '--no-password',
     ];
     return spawn(resolvePgBin('pg_restore'), args, { env: buildEnv(conn) });

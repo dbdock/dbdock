@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- `dbdock restore <checkpoint-id>` prints what it will replace and what it will leave alone before it starts, and exits with code 73 when it refuses to run
+- Checkpoints saved by 1.3.0 hold the whole database and are refused for in-place restore on PostgreSQL, with an explanation; new checkpoints are not affected
+- `lockDatabase(config).reset()` no longer drops platform schemas such as Supabase's `auth`, even when the connecting role is a member of their owner, and accepts a list of schemas to empty
+
+### Fixed
+- Restoring a checkpoint on Supabase, or any database where another role owns a schema, no longer fails with `must be owner of schema auth`, and never removes or replaces `auth`, `storage`, `extensions` or other platform schemas, even when your database user is a member of the role that owns them
+- Checkpoints now hold only the schemas a restore may replace, plus the extensions installed in them, so a restore no longer reports failure after putting your data back
+- Restoring a checkpoint keeps table grants and default privileges, so roles such as Supabase's `anon` keep their access
+- A restore can now bring back a schema the bad change dropped
+
 ## [1.3.0] - 2026-11-04
 
 ### Security

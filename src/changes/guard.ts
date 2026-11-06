@@ -20,19 +20,28 @@ export class GuardedChangeError extends Error {
   }
 }
 
+// `prepare` runs once the lock is held and before the checkpoint, so a check
+// that refuses the change leaves no checkpoint and no record behind.
 export async function runGuardedChange<T>(
   change: (database: LocalDatabase) => Promise<T>,
   options: GuardOptions = {},
+  prepare?: (database: LocalDatabase) => Promise<void>,
 ): Promise<GuardResult<T>> {
   const cwd = options.cwd ?? process.cwd();
   const config = guardConfig(cwd, options.config);
   const database = await lockDatabase(config);
   try {
+    await prepare?.(database);
     const before =
       !options.kind || options.kind === 'migration'
         ? await database.schema()
         : null;
-    const checkpoint = await saveCheckpoint(config);
+    const scope = await database.scope();
+    if (!scope.schemas.length)
+      throw new Error(
+        'This database user owns no schema DBDock can checkpoint, so the change was not run.',
+      );
+    const checkpoint = await saveCheckpoint(config, scope);
     const metadata = recordMetadata(options, cwd);
     const secrets = [
       config.database.password,
