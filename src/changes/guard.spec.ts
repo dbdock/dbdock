@@ -43,8 +43,15 @@ describe('Guarded changes', () => {
     close: jest.fn().mockResolvedValue(undefined),
   };
   let cwd: string;
+  const savedEnv = { ...process.env };
   beforeEach(() => {
     jest.clearAllMocks();
+    // CI runners set CI=true, which makes the guard refuse local checkpoints.
+    // These tests use local storage, so they run as on a developer machine.
+    process.env = { ...savedEnv };
+    delete process.env.CI;
+    delete process.env.DBDOCK_CHECKPOINT_DIR;
+    delete process.env.DBDOCK_ENCRYPTION_SECRET;
     cwd = mkdtempSync(join(tmpdir(), 'dbdock-guard-test-'));
     jest.mocked(lockDatabase).mockResolvedValue(database);
     jest.mocked(saveCheckpoint).mockResolvedValue({
@@ -62,7 +69,24 @@ describe('Guarded changes', () => {
     jest.mocked(saveRecord).mockResolvedValue(undefined);
     jest.mocked(sendRecord).mockResolvedValue({ sent: true });
   });
-  afterEach(() => rmSync(cwd, { recursive: true, force: true }));
+  afterEach(() => {
+    process.env = { ...savedEnv };
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  it('refuses local checkpoints in CI unless they go to a persistent folder', async () => {
+    process.env.CI = 'true';
+    const change = jest.fn();
+    await expect(runGuardedChange(change, { config, cwd })).rejects.toThrow(
+      'CI needs your S3/R2 bucket, or DBDOCK_CHECKPOINT_DIR on a persistent volume.',
+    );
+    expect(lockDatabase).not.toHaveBeenCalled();
+    expect(change).not.toHaveBeenCalled();
+
+    process.env.DBDOCK_CHECKPOINT_DIR = join(cwd, 'checkpoints');
+    await runGuardedChange(change, { config, cwd });
+    expect(change).toHaveBeenCalledTimes(1);
+  });
 
   it('refuses the change when the checkpoint fails', async () => {
     jest
