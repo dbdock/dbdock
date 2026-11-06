@@ -8,6 +8,7 @@ import { lockDatabase } from '@/changes/database';
 import { ApiClient } from '@/cloud/api-client';
 import { sqlSummary } from '@/changes/metadata';
 import type { CLIConfig } from '@/cli/utils/config';
+import type { GuardOptions } from '@/changes/types';
 
 jest.mock('@/changes/storage', () => ({
   saveCheckpoint: jest.fn(),
@@ -33,6 +34,10 @@ const config: CLIConfig = {
 describe('Guarded changes', () => {
   const database = {
     schema: jest.fn().mockResolvedValue({ tables: [], columns: {} }),
+    scope: jest
+      .fn()
+      .mockResolvedValue({ schemas: ['public'], extensions: ['citext'] }),
+    schemaLists: jest.fn(),
     execute: jest.fn(),
     reset: jest.fn(),
     close: jest.fn().mockResolvedValue(undefined),
@@ -55,7 +60,7 @@ describe('Guarded changes', () => {
       keyFingerprint: null,
     });
     jest.mocked(saveRecord).mockResolvedValue(undefined);
-    jest.mocked(sendRecord).mockResolvedValue(true);
+    jest.mocked(sendRecord).mockResolvedValue({ sent: true });
   });
   afterEach(() => rmSync(cwd, { recursive: true, force: true }));
 
@@ -69,6 +74,38 @@ describe('Guarded changes', () => {
     );
     expect(change).not.toHaveBeenCalled();
     expect(saveRecord).not.toHaveBeenCalled();
+    expect(database.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('checkpoints only the schemas and extensions a restore may replace', async () => {
+    await runGuardedChange(jest.fn(), { config, cwd });
+    expect(saveCheckpoint).toHaveBeenCalledWith(expect.any(Object), {
+      schemas: ['public'],
+      extensions: ['citext'],
+    });
+  });
+
+  it('refuses the change when the user owns no schema it can checkpoint', async () => {
+    database.scope.mockResolvedValueOnce({ schemas: [], extensions: [] });
+    const change = jest.fn();
+    await expect(runGuardedChange(change, { config, cwd })).rejects.toThrow(
+      'owns no schema DBDock can checkpoint',
+    );
+    expect(saveCheckpoint).not.toHaveBeenCalled();
+    expect(change).not.toHaveBeenCalled();
+    expect(database.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves no checkpoint and no record when the prepare check refuses', async () => {
+    const change = jest.fn();
+    await expect(
+      runGuardedChange(change, { config, cwd }, () =>
+        Promise.reject(new Error('Refused')),
+      ),
+    ).rejects.toThrow('Refused');
+    expect(saveCheckpoint).not.toHaveBeenCalled();
+    expect(saveRecord).not.toHaveBeenCalled();
+    expect(change).not.toHaveBeenCalled();
     expect(database.close).toHaveBeenCalledTimes(1);
   });
 
@@ -116,13 +153,51 @@ describe('Guarded changes', () => {
   });
 
   it('keeps the successful result when Cloud is offline', async () => {
-    jest.mocked(sendRecord).mockResolvedValueOnce(false);
+    jest
+      .mocked(sendRecord)
+      .mockResolvedValueOnce({ sent: false, reason: 'offline' });
     const result = await runGuardedChange(() => Promise.resolve('done'), {
       config,
       cwd,
     });
     expect(result.synced).toBe(false);
+    expect(result.syncError).toBe('offline');
     expect(result.value).toBe('done');
+  });
+
+  it('reports the checkpoint before the change runs', async () => {
+    const order: string[] = [];
+    const onCheckpoint = jest.fn<
+      void,
+      Parameters<NonNullable<GuardOptions['onCheckpoint']>>
+    >(() => {
+      order.push('checkpoint');
+    });
+    await runGuardedChange(
+      () => {
+        order.push('change');
+        return Promise.resolve();
+      },
+      { config, cwd, onCheckpoint },
+    );
+    expect(order).toEqual(['checkpoint', 'change']);
+    const [checkpoint, details] = onCheckpoint.mock.calls[0];
+    expect(checkpoint.id).toBe('cp_abcdefghijklmnopqrstu');
+    expect(details.storage).toBe('local');
+    expect(details.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it('carries whether the failed change reached Cloud', async () => {
+    jest
+      .mocked(sendRecord)
+      .mockResolvedValueOnce({ sent: false, reason: 'offline' });
+    const failure = runGuardedChange(
+      () => Promise.reject(new Error('migration broke')),
+      { config, cwd },
+    );
+    await expect(failure).rejects.toMatchObject({
+      delivery: { sent: false, reason: 'offline' },
+    });
   });
 
   it('excludes credentials, raw SQL and row data from the actual Cloud request', async () => {

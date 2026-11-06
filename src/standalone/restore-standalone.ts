@@ -36,6 +36,7 @@ import { ManagedStorageAdapter } from '../storage/adapters/managed.adapter';
 import { IStorageAdapter } from '../storage/storage.interface';
 import { ManagedBroker } from '../cloud/types';
 import { getEngine } from '../engines';
+import type { RestoreSpawnOptions } from '../engines/engine.types';
 import {
   isHarmlessPgRestoreWarning,
   summarizePgRestoreOutput,
@@ -60,6 +61,9 @@ export interface RestoreStandaloneOptions {
   // restore starts. Use it to clear the target, e.g. DatabaseLock.reset().
   beforeRestore?: () => Promise<void>;
   checksum?: string;
+  // How the engine's restore tool runs, e.g. without --clean after
+  // beforeRestore has already emptied the target schemas.
+  restoreFlags?: RestoreSpawnOptions;
 }
 
 function buildRemoteAdapter(
@@ -253,7 +257,7 @@ export async function restoreBackupStandalone(
       callbacks.onStage('Restoring to database');
     }
 
-    const restoreProcess = engine.spawnRestore(target);
+    const restoreProcess = engine.spawnRestore(target, options.restoreFlags);
     stream.pipe(restoreProcess.stdin);
 
     await new Promise<void>((resolve, reject) => {

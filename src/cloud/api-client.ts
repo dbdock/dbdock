@@ -331,6 +331,16 @@ export class ApiClient implements ManagedBroker {
     return res.data as RemoteProject;
   }
 
+  // Newest first. The API returns at most 100 per page.
+  async listChanges(ref: string, limit = 50): Promise<ChangeRecord[]> {
+    const res = await this.request<{ data: ChangeRecord[] }>({
+      method: 'GET',
+      path: `/projects/${encodeURIComponent(ref)}/changes`,
+      query: { limit: String(Math.min(Math.max(limit, 1), 100)) },
+    });
+    return res.data?.data ?? [];
+  }
+
   async getProject(ref: string): Promise<RemoteProject> {
     const res = await this.request<RemoteProject>({
       method: 'GET',

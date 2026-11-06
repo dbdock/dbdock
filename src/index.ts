@@ -80,11 +80,13 @@ export { runGuardedChange } from '@/changes/guard';
 export { restoreCheckpoint } from '@/changes/restore';
 export { sqlSummary } from '@/changes/metadata';
 export { syncRecords } from '@/changes/records';
+export { RestoreRefusedError } from '@/changes/types';
 export type {
   ChangeRecord,
   Checkpoint,
   GuardOptions,
   GuardResult,
+  RestorePlan,
 } from '@/changes/types';
 export type { RestoreCheckpointOptions } from '@/changes/restore';
 

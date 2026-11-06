@@ -37,6 +37,24 @@ export interface Checkpoint {
   encrypted: boolean;
   compressed: boolean;
   keyFingerprint: string | null;
+  // What the checkpoint holds and a restore may replace. Missing on 1.3.0
+  // checkpoints, which held the whole database.
+  schemas?: string[];
+  extensions?: string[];
+}
+
+export interface RestorePlan {
+  replace: string[];
+  keep: string[];
+}
+
+// A restore DBDock will not run. Nothing was changed.
+export class RestoreRefusedError extends Error {
+  readonly exitCode = 73;
+  constructor(message: string) {
+    super(message);
+    this.name = 'RestoreRefusedError';
+  }
 }
 
 export interface GuardOptions {
@@ -49,10 +67,20 @@ export interface GuardOptions {
   session?: string;
   summary?: string;
   restoredCheckpointId?: string;
+  // Called once the checkpoint is saved, before the change runs.
+  onCheckpoint?: (
+    checkpoint: Checkpoint,
+    details: {
+      durationMs: number;
+      storage: ChangeRecord['checkpointStorage'];
+    },
+  ) => void;
 }
 
 export interface GuardResult<T> {
   value: T;
   record: ChangeRecord;
   synced: boolean;
+  // Why the record did not reach DBDock Cloud, when it did not.
+  syncError?: string;
 }

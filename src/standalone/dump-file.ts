@@ -4,6 +4,7 @@ import type { Transform } from 'stream';
 import { createBrotliCompress } from 'zlib';
 import type { CLIConfig } from '@/cli/utils/config';
 import { getEngine } from '@/engines';
+import type { DumpScope } from '@/engines/engine.types';
 import { createBackupEncryptStream } from '@/crypto/backup-crypto';
 import type { BackupProgressCallback } from '@/standalone/backup-standalone';
 
@@ -11,6 +12,7 @@ export async function dumpToFile(
   config: CLIConfig,
   path: string,
   callbacks?: BackupProgressCallback,
+  scope?: DumpScope,
 ): Promise<void> {
   const key = config.backup?.encryption?.key;
   if (
@@ -24,6 +26,8 @@ export async function dumpToFile(
   callbacks?.onStage?.('Dumping database');
   const dump = engine.spawnDump(config.database, {
     format: config.backup?.format ?? 'custom',
+    schemas: scope?.schemas,
+    extensions: scope?.extensions,
   });
   const messages: string[] = [];
   dump.process.stderr.on('data', (data: Buffer) =>
