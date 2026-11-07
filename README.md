@@ -22,8 +22,10 @@ Run changes through the guard so a complete checkpoint is saved before they star
 npm install --save-dev dbdock
 npx dbdock login
 npx dbdock link
-npx dbdock run -- npx prisma migrate deploy
+npx dbdock run
 ```
+
+`dbdock run` with no command runs `prisma migrate deploy` or `drizzle-kit migrate` when the project uses Prisma or Drizzle. For anything else, pass the command: `npx dbdock run -- <your migration command>`.
 
 Set `DATABASE_URL` or `DBDOCK_DB_URL` in the local environment or private `.env` file. The guard supports PostgreSQL, MySQL and MariaDB and refuses the change if its checkpoint or initial local record cannot be saved. Use `dbdock run --sql migration.sql` for SQL files.
 
@@ -32,14 +34,15 @@ Checkpoints default to `.dbdock/checkpoints/` or use your own S3/R2 bucket. CI r
 The linked dashboard receives one completed record: time, person or agent, deploy or session, operation summary, status and checkpoint ID. It does not receive your URL, credentials, SQL, row data or checkpoint files. Offline records remain in `.dbdock/records/`; `dbdock sync` retries uploads without running the change again. Existing `dbdock.config.json` users also retain optional non-secret configuration sync.
 
 ```bash
-npx dbdock restore cp_CHECKPOINT_ID --yes
+npx dbdock changes   # what changed, who changed it, and the checkpoint saved before it
+npx dbdock undo      # put the database back to the checkpoint before the last change
 ```
 
-Replace the ID with the checkpoint from the record and use the same target, storage and encryption key. Restoring this checkpoint removes writes made after the checkpoint. DBDock saves another checkpoint first. Stop other writers during restore.
+`undo` shows what it will replace and what it will leave alone, then asks. Without a terminal, as in CI, add `--yes`. To go back further, pass a checkpoint: `npx dbdock undo cp_CHECKPOINT_ID`. Use the same target, storage and encryption key that saved it.
+
+Restoring a checkpoint removes writes made after the checkpoint. DBDock saves another checkpoint first, so running `undo` again puts them back. It only replaces the schemas the checkpoint holds; platform schemas such as Supabase's `auth` and `storage` are never touched. Stop other writers during restore.
 
 Only changes through the guard are recorded. A command must use the same target as DBDock; the wrapper cannot inspect another tool's settings. An agent with direct database access can bypass the guard. Existing backup, copy, migration and Cloud connection tools remain available separately.
-
-[Guard reference](https://docs.dbdock.xyz/cli/run), [guarded SDK](https://docs.dbdock.xyz/sdk/guarded-changes), [local agent setup](https://docs.dbdock.xyz/cloud/mcp).
 
 ## Table of contents
 
@@ -128,11 +131,13 @@ See the [Quickstart guide](https://docs.dbdock.xyz/get-started/quickstart) for a
 
 | Command | Purpose |
 |---|---|
-| [`run`](https://docs.dbdock.xyz/cli/run) | Checkpoint and guard a local command or SQL file |
-| [`link`](https://docs.dbdock.xyz/cli/link) | Link this directory without a database URL |
+| `run` | Save a checkpoint, run your migration or SQL file, and keep a record |
+| `undo` | Put the database back to the checkpoint before the last change |
+| `changes` | List recent changes, who made them and their checkpoints |
+| `link` | Link this directory without a database URL |
 | [`init`](https://docs.dbdock.xyz/cli/init) | Interactive setup wizard (optionally links to the cloud) |
 | [`backup`](https://docs.dbdock.xyz/cli/backup) | Create a backup |
-| [`restore`](https://docs.dbdock.xyz/cli/restore) | Restore a backup (with filtering) |
+| [`restore`](https://docs.dbdock.xyz/cli/restore) | Restore a backup (with filtering), or a checkpoint by ID |
 | [`copydb`](https://docs.dbdock.xyz/cli/copydb) | Copy a database between two URLs |
 | [`list`](https://docs.dbdock.xyz/cli/list) | List backups |
 | [`delete`](https://docs.dbdock.xyz/cli/delete) | Delete specific or all backups |

@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-11-07
+
 ### Added
 - `dbdock undo` puts the database back to the checkpoint saved before the last change, after showing what it will replace and asking; `dbdock undo <checkpoint>` picks an older one, and running `undo` again undoes the undo
 - `dbdock changes` lists recent changes with who made them, their status and their checkpoint, from this machine and, when linked, DBDock Cloud
