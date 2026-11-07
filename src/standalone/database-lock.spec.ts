@@ -1,4 +1,5 @@
 import {
+  emptySchemaStatements,
   lockDatabase,
   mysqlDropStatements,
   mysqlLockName,
@@ -73,5 +74,34 @@ describe('lockDatabase', () => {
         storage: { provider: 'local' },
       }),
     ).rejects.toThrow(/database name is required/);
+  });
+});
+
+describe('emptySchemaStatements', () => {
+  it('drops relations before the routines and types they use', () => {
+    expect(
+      emptySchemaStatements([
+        { type: 'type', identity: 'public.mood' },
+        { type: 'function', identity: 'public.f(integer)' },
+        { type: 'domain', identity: 'public.posint' },
+        { type: 'table', identity: 'public."Orders"' },
+        { type: 'materialized view', identity: 'public.mv' },
+      ]),
+    ).toEqual([
+      'DROP TABLE IF EXISTS public."Orders" CASCADE',
+      'DROP MATERIALIZED VIEW IF EXISTS public.mv CASCADE',
+      'DROP FUNCTION IF EXISTS public.f(integer) CASCADE',
+      'DROP TYPE IF EXISTS public.mood CASCADE',
+      'DROP DOMAIN IF EXISTS public.posint CASCADE',
+    ]);
+  });
+
+  it('refuses an object it does not know how to drop', () => {
+    expect(() =>
+      emptySchemaStatements([
+        { type: 'table', identity: 'public.t' },
+        { type: 'transform', identity: 'for x language y' },
+      ]),
+    ).toThrow('does not know how to remove transform for x language y');
   });
 });

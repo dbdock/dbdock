@@ -102,7 +102,7 @@ describePg('lockDatabase on PostgreSQL', () => {
     await second.close();
   });
 
-  it('wipes what the role owns and keeps what it does not', async () => {
+  it('empties what the role owns, keeps the schemas, and leaves the rest alone', async () => {
     const lock = await lockDatabase(ownerConfig);
     try {
       await lock.reset();
@@ -118,10 +118,14 @@ describePg('lockDatabase on PostgreSQL', () => {
     const schemas = await ownerAdmin.query<{ nspname: string }>(
       `SELECT nspname FROM pg_namespace WHERE nspname IN ('public', 'app', 'vendor') ORDER BY 1`,
     );
-    expect(schemas.rows.map((r) => r.nspname)).toEqual(['public', 'vendor']);
+    expect(schemas.rows.map((r) => r.nspname)).toEqual([
+      'app',
+      'public',
+      'vendor',
+    ]);
   });
 
-  it('gives public back its owner and grants', async () => {
+  it('keeps public with its owner and grants', async () => {
     const before = await ownerAdmin.query<{ owner: string; acl: string }>(
       `SELECT nspowner::regrole::text AS owner, nspacl::text AS acl FROM pg_namespace WHERE nspname = 'public'`,
     );

@@ -27,6 +27,26 @@ describe('isHarmlessPgRestoreWarning', () => {
     expect(isHarmlessPgRestoreWarning(output)).toBe(true);
   });
 
+  it("accepts a kept schema and the platform role's default privileges", () => {
+    const output = [
+      'pg_restore: error: could not execute query: ERROR:  schema "app" already exists',
+      'Command was: CREATE SCHEMA app;',
+      'pg_restore: error: could not execute query: ERROR:  permission denied to change default privileges',
+      'Command was: ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public GRANT ALL ON TABLES TO anon;',
+      'pg_restore: warning: errors ignored on restore: 2',
+    ].join('\n');
+    expect(isHarmlessPgRestoreWarning(output)).toBe(true);
+  });
+
+  it('still rejects being refused access to a table', () => {
+    const output = [
+      'pg_restore: error: could not execute query: ERROR:  permission denied for table orders',
+      'Command was: COPY public.orders (id) FROM stdin;',
+      'pg_restore: warning: errors ignored on restore: 1',
+    ].join('\n');
+    expect(isHarmlessPgRestoreWarning(output)).toBe(false);
+  });
+
   it('accepts the pre-12 archiver message format', () => {
     const output = [
       'pg_restore: [archiver (db)] Error while PROCESSING TOC:',

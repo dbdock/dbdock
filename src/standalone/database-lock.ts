@@ -7,10 +7,10 @@ import type { CLIConfig, SslMode } from '../cli/utils/config';
 type DbConnection = CLIConfig['database'];
 
 export interface DatabaseLock {
-  // Drops every object a restore will recreate, so the restored database
-  // matches the backup exactly instead of keeping objects created after it.
-  // With `schemas`, drops only those (Postgres); a schema the role may not
-  // replace makes it throw before anything is dropped.
+  // Empties what a restore will recreate, so the restored database matches
+  // the backup exactly instead of keeping objects created after it. Postgres
+  // schemas are emptied, not dropped. With `schemas`, empties only those; a
+  // schema the role may not replace makes it throw before anything changes.
   reset(schemas?: string[]): Promise<void>;
   close(): Promise<void>;
 }
@@ -150,9 +150,9 @@ export function isManagedSchema(name: string): boolean {
   return MANAGED_SCHEMAS.has(name) || name.startsWith('pg_');
 }
 
-// Schemas this role may drop, minus system and extension-owned ones.
+// Schemas this role may empty, minus system and extension-owned ones.
 const DROPPABLE_SCHEMAS_SQL = `
-  SELECT n.nspname AS name, format('DROP SCHEMA %I CASCADE', n.nspname) AS stmt
+  SELECT n.nspname AS name
   FROM pg_namespace n
   WHERE n.nspname <> 'information_schema'
     AND n.nspname NOT LIKE 'pg\\_%'
@@ -165,25 +165,6 @@ const DROPPABLE_SCHEMAS_SQL = `
     )
   ORDER BY n.nspname`;
 
-// pg_dump never re-creates "public" and restores run with --no-acl, so its
-// owner and grants have to be carried across the drop by hand.
-const PUBLIC_SCHEMA_GRANTS_SQL = `
-  SELECT format(
-    'GRANT %s ON SCHEMA public TO %s%s',
-    a.privilege_type,
-    CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE quote_ident(r.rolname) END,
-    CASE WHEN a.is_grantable THEN ' WITH GRANT OPTION' ELSE '' END
-  ) AS stmt
-  FROM pg_namespace n
-  CROSS JOIN LATERAL aclexplode(n.nspacl) a
-  LEFT JOIN pg_roles r ON r.oid = a.grantee
-  WHERE n.nspname = 'public' AND a.grantee <> n.nspowner`;
-
-const PUBLIC_SCHEMA_OWNER_SQL = `
-  SELECT format('ALTER SCHEMA public OWNER TO %I', r.rolname) AS stmt
-  FROM pg_namespace n JOIN pg_roles r ON r.oid = n.nspowner
-  WHERE n.nspname = 'public'`;
-
 const ALL_SCHEMAS_SQL = `
   SELECT nspname AS name FROM pg_namespace
   WHERE nspname <> 'information_schema' AND nspname NOT LIKE 'pg\\_%'
@@ -195,6 +176,52 @@ const EXTENSIONS_IN_SCHEMAS_SQL = `
   WHERE n.nspname = ANY($1::text[])
   ORDER BY e.extname`;
 
+// Every object that lives directly in a schema, named so it can be dropped.
+// Left out: extensions and their members (an extension stays installed), and
+// objects that are part of another one (indexes, owned sequences, row types,
+// partitions), which go when their owner goes. A partitioned table depends on
+// itself, so a self-reference does not count as being part of something.
+const SCHEMA_OBJECTS_SQL = `
+  SELECT CASE WHEN d.classid = 'pg_type'::regclass AND t.typtype = 'd'
+              THEN 'domain' ELSE o.type END AS type,
+         o.identity
+  FROM pg_depend d
+  CROSS JOIN LATERAL pg_identify_object(d.classid, d.objid, 0) o
+  LEFT JOIN pg_type t ON d.classid = 'pg_type'::regclass AND t.oid = d.objid
+  WHERE d.refclassid = 'pg_namespace'::regclass
+    AND d.refobjid = (SELECT oid FROM pg_namespace WHERE nspname = $1)
+    AND d.deptype = 'n'
+    AND d.classid <> 'pg_extension'::regclass
+    AND NOT EXISTS (
+      SELECT 1 FROM pg_depend e
+      WHERE e.classid = d.classid AND e.objid = d.objid
+        AND (e.deptype = 'e'
+          OR (e.deptype IN ('i', 'a')
+              AND NOT (e.refclassid = d.classid AND e.refobjid = d.objid))))`;
+
+// pg_identify_object's type name, the DROP keyword, and the order to drop in:
+// relations first so routines and types are no longer in use.
+const DROP_KEYWORDS: Record<string, [keyword: string, order: number]> = {
+  table: ['TABLE', 0],
+  'foreign table': ['FOREIGN TABLE', 0],
+  view: ['VIEW', 0],
+  'materialized view': ['MATERIALIZED VIEW', 0],
+  sequence: ['SEQUENCE', 1],
+  function: ['FUNCTION', 2],
+  procedure: ['PROCEDURE', 2],
+  aggregate: ['AGGREGATE', 2],
+  'statistics object': ['STATISTICS', 2],
+  'text search configuration': ['TEXT SEARCH CONFIGURATION', 3],
+  'text search dictionary': ['TEXT SEARCH DICTIONARY', 3],
+  operator: ['OPERATOR', 3],
+  'operator class': ['OPERATOR CLASS', 3],
+  'operator family': ['OPERATOR FAMILY', 3],
+  conversion: ['CONVERSION', 3],
+  collation: ['COLLATION', 4],
+  domain: ['DOMAIN', 4],
+  type: ['TYPE', 4],
+};
+
 type Queryable = Pick<Client, 'query'>;
 
 // Every schema that is not part of Postgres itself.
@@ -203,15 +230,17 @@ export async function listSchemas(client: Queryable): Promise<string[]> {
   return rows.map((row) => row.name);
 }
 
-// The schemas a checkpoint may hold and a restore may replace: dropable by
-// this role, not owned by an extension, not managed by the platform.
+// The schemas a checkpoint may hold and a restore may replace: owned by this
+// role or one it belongs to, not owned by an extension, not managed by the
+// platform.
 export async function restorableSchemas(client: Queryable): Promise<string[]> {
   const { rows } = await client.query<{ name: string }>(DROPPABLE_SCHEMAS_SQL);
   return rows.map((row) => row.name).filter((name) => !isManagedSchema(name));
 }
 
-// Extensions installed into these schemas. Dropping a schema drops them too,
-// so a checkpoint of the schema has to carry their CREATE EXTENSION.
+// Extensions installed into these schemas. A restore keeps installed
+// extensions, so the checkpoint carries their CREATE EXTENSION only to bring
+// one back if the change dropped it.
 export async function extensionsInSchemas(
   client: Queryable,
   schemas: string[],
@@ -237,53 +266,54 @@ export function refusedSchemas(
   );
 }
 
+// The DROP statements that empty a schema, in a safe order.
+export function emptySchemaStatements(
+  objects: { type: string; identity: string }[],
+): string[] {
+  const unknown = objects.filter((object) => !DROP_KEYWORDS[object.type]);
+  if (unknown.length)
+    throw new Error(
+      `DBDock cannot empty this schema: it does not know how to remove ${unknown
+        .map((object) => `${object.type} ${object.identity}`)
+        .join(', ')}. Nothing was changed.`,
+    );
+  return [...objects]
+    .sort((a, b) => DROP_KEYWORDS[a.type][1] - DROP_KEYWORDS[b.type][1])
+    .map(
+      (object) =>
+        `DROP ${DROP_KEYWORDS[object.type][0]} IF EXISTS ${object.identity} CASCADE`,
+    );
+}
+
+// Empties the schemas a restore will refill, inside one transaction. The
+// schemas themselves stay: their owner, grants and default privileges belong
+// to whoever set them (on Supabase, partly to supabase_admin, which this role
+// cannot recreate), and installed extensions stay installed.
 export async function resetPostgres(
   client: Client,
   schemas?: string[],
 ): Promise<void> {
   await client.query('BEGIN');
   try {
-    const droppable = (
-      await client.query<{ name: string; stmt: string }>(DROPPABLE_SCHEMAS_SQL)
-    ).rows.filter((row) => !isManagedSchema(row.name));
+    const existing = await listSchemas(client);
+    const restorable = await restorableSchemas(client);
     if (schemas) {
-      const refused = refusedSchemas(
-        schemas,
-        await listSchemas(client),
-        droppable.map((row) => row.name),
-      );
+      const refused = refusedSchemas(schemas, existing, restorable);
       if (refused.length)
         throw new Error(
           `DBDock may not replace ${refused.join(', ')}: the schema belongs to the platform or another role.`,
         );
     }
-    const drops = schemas
-      ? droppable.filter((row) => schemas.includes(row.name))
-      : droppable;
-    const dropsPublic = drops.some((row) => row.name === 'public');
-    const grants = dropsPublic
-      ? (await client.query<{ stmt: string }>(PUBLIC_SCHEMA_GRANTS_SQL)).rows
-      : [];
-    const owner = dropsPublic
-      ? (await client.query<{ stmt: string }>(PUBLIC_SCHEMA_OWNER_SQL)).rows[0]
-      : undefined;
-
-    for (const { stmt } of drops) await client.query(stmt);
-
-    if (dropsPublic) {
-      await client.query('CREATE SCHEMA public');
-      for (const { stmt } of grants) await client.query(stmt);
-      if (owner) {
-        // Handing ownership back needs membership in the old owner role; if
-        // this role lacks it, keep ownership rather than fail the restore.
-        await client.query('SAVEPOINT dbdock_public_owner');
-        try {
-          await client.query(owner.stmt);
-          await client.query('RELEASE SAVEPOINT dbdock_public_owner');
-        } catch {
-          await client.query('ROLLBACK TO SAVEPOINT dbdock_public_owner');
-        }
-      }
+    const targets = schemas
+      ? schemas.filter((name) => existing.includes(name))
+      : restorable;
+    for (const schema of targets) {
+      const { rows } = await client.query<{ type: string; identity: string }>(
+        SCHEMA_OBJECTS_SQL,
+        [schema],
+      );
+      for (const statement of emptySchemaStatements(rows))
+        await client.query(statement);
     }
     await client.query('COMMIT');
   } catch (err) {

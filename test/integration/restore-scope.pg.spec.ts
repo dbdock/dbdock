@@ -20,6 +20,9 @@ const DB = `dbdock_scope_test_${suffix}`;
 const OWNER = `dbdock_scope_owner_${suffix}`;
 const AUTH_ADMIN = `dbdock_scope_auth_${suffix}`;
 const ANON = `dbdock_scope_anon_${suffix}`;
+// Like Supabase's supabase_admin: owns default privileges in public, and the
+// app's role is not a member of it.
+const PLATFORM = `dbdock_scope_platform_${suffix}`;
 const PASSWORD = 'scope-test-password';
 
 // The layout Supabase gives a project: the app's tables in public, owned by
@@ -123,11 +126,12 @@ describePg(
       await admin.query(`CREATE ROLE ${OWNER} LOGIN PASSWORD '${PASSWORD}'`);
       await admin.query(`CREATE ROLE ${AUTH_ADMIN} NOLOGIN`);
       await admin.query(`CREATE ROLE ${ANON} NOLOGIN`);
+      await admin.query(`CREATE ROLE ${PLATFORM} NOLOGIN`);
     });
 
     afterAll(async () => {
       await admin?.query(`DROP DATABASE IF EXISTS ${DB} WITH (FORCE)`);
-      for (const role of [ANON, AUTH_ADMIN, OWNER])
+      for (const role of [PLATFORM, ANON, AUTH_ADMIN, OWNER])
         await admin?.query(`DROP ROLE IF EXISTS ${role}`);
       await admin?.end();
     });
@@ -144,8 +148,9 @@ describePg(
       await admin.query(`REVOKE ${AUTH_ADMIN} FROM ${OWNER}`);
       await withClient(DB, undefined, (client) =>
         client.query(`
-        ALTER SCHEMA public OWNER TO ${OWNER};
         CREATE EXTENSION citext SCHEMA public;
+        ALTER DEFAULT PRIVILEGES FOR ROLE ${PLATFORM} IN SCHEMA public GRANT ALL ON TABLES TO ${ANON};
+        ALTER DEFAULT PRIVILEGES FOR ROLE ${OWNER} IN SCHEMA public GRANT SELECT ON TABLES TO ${ANON};
         CREATE SCHEMA auth AUTHORIZATION ${AUTH_ADMIN};
         CREATE TABLE auth.users (id int PRIMARY KEY, email text NOT NULL);
         ALTER TABLE auth.users OWNER TO ${AUTH_ADMIN};
@@ -195,6 +200,36 @@ describePg(
                has_table_privilege('${ANON}', 'public.orders', 'SELECT') AS anon`);
         expect(rows[0]).toEqual({ matches: true, anon: true });
       });
+    });
+
+    it('keeps public itself: its identity, owner and the platform default privileges', async () => {
+      const publicSchema = () =>
+        withClient(DB, undefined, async (client) => {
+          const { rows } = await client.query<{
+            oid: string;
+            owner: string;
+            defaults: string;
+          }>(`
+          SELECT n.oid::text AS oid,
+                 pg_get_userbyid(n.nspowner) AS owner,
+                 (SELECT string_agg(pg_get_userbyid(d.defaclrole) || ':' || d.defaclobjtype::text || ':' || d.defaclacl::text, ' ' ORDER BY 1)
+                  FROM pg_default_acl d WHERE d.defaclnamespace = n.oid) AS defaults
+          FROM pg_namespace n WHERE n.nspname = 'public'`);
+          return rows[0];
+        });
+      const before = await appData();
+      const schemaBefore = await publicSchema();
+      expect(schemaBefore.defaults).toContain(PLATFORM);
+      const checkpointId = await checkpointAfterBadChange();
+
+      await restoreCheckpoint(checkpointId, {
+        config: config(),
+        cwd,
+        confirmLaterWrites: true,
+      });
+
+      expect(await appData()).toEqual(before);
+      expect(await publicSchema()).toEqual(schemaBefore);
     });
 
     it('never drops the platform schema, even when the role is a member of its owner', async () => {

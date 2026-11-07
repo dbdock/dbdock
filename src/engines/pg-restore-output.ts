@@ -1,9 +1,13 @@
 // Errors pg_restore reports and then skips without losing data: settings a
 // newer pg_dump emits that an older server lacks, objects every database
 // already has, and ownership/ACL steps a non-superuser is not allowed to run.
+// A restore empties schemas instead of dropping them, so creating one that is
+// still there, or re-applying another role's default privileges that are still
+// in place (Supabase's supabase_admin), changes nothing.
 const HARMLESS_ERRORS: RegExp[] = [
   /unrecognized configuration parameter "[^"]+"/i,
-  /schema "public" already exists/i,
+  /schema "[^"]+" already exists/i,
+  /permission denied to change default privileges/i,
   /extension "[^"]+" already exists/i,
   /procedural language "[^"]+" already exists/i,
   /must be owner of (extension|schema|procedural language) /i,
