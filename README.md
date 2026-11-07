@@ -7,7 +7,7 @@ DBDock shows what changed in your database, who changed it, and lets you put it 
 [![npm version](https://img.shields.io/npm/v/dbdock.svg)](https://www.npmjs.com/package/dbdock)
 [![npm downloads](https://img.shields.io/npm/dm/dbdock.svg)](https://www.npmjs.com/package/dbdock)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](https://nodejs.org)
 [![Documentation](https://img.shields.io/badge/docs-docs.dbdock.xyz-23517c)](https://docs.dbdock.xyz)
 
 [Documentation](https://docs.dbdock.xyz) &nbsp;·&nbsp; [Dashboard](https://dbdock.xyz) &nbsp;·&nbsp; [Discussions](https://github.com/dbdock/dbdock/discussions) &nbsp;·&nbsp; [Report a bug](https://github.com/dbdock/dbdock/issues)
@@ -72,7 +72,7 @@ npx dbdock --help
 npm install -g dbdock
 ```
 
-**Prerequisites:** Node.js 18+. For PostgreSQL backups you'll need the PostgreSQL client tools (`pg_dump`, `pg_restore`, `psql`). MySQL/MariaDB, SQL Server, and Redis backups use their respective client tools.
+**Prerequisites:** Node.js 20+. For PostgreSQL backups you'll need the PostgreSQL client tools (`pg_dump`, `pg_restore`, `psql`). MySQL/MariaDB, SQL Server, and Redis backups use their respective client tools.
 
 <details>
 <summary>Install PostgreSQL client tools</summary>

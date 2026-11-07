@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-11-08
+
+### Security
+- Installing dbdock no longer reports vulnerabilities in `npm audit`: `nodemailer` moves to 10.4 (SMTP command injection and other advisories), `uuid` to 11.1.1, and the unused `@nestjs/platform-express` (which pulled in a vulnerable `multer`) is removed
+
+### Changed
+- Node.js 20 or newer is required. Node.js 18 has had no security fixes since April 2025, and the fixed `nodemailer` needs Node.js 20
+- `npm run start` runs the scheduled jobs without opening a web server on port 3000; dbdock never served any web routes
+
+### Removed
+- The `test:e2e` script and its starter test, which expected a web route dbdock never had
+
 ## [1.3.1] - 2026-11-07
 
 ### Added
