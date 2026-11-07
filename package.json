@@ -1,6 +1,6 @@
 {
   "name": "dbdock",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "description": "Checkpoint database changes locally, keep a change record and restore checkpoints. CLI and SDK for PostgreSQL and MySQL.",
   "author": "Naheem Olaide <naheemolaide@gmail.com>",
   "private": false,
@@ -48,7 +48,7 @@
   },
   "homepage": "https://docs.dbdock.xyz",
   "engines": {
-    "node": ">=18.0.0",
+    "node": ">=20.0.0",
     "npm": ">=8.0.0"
   },
   "peerDependencies": {
@@ -69,7 +69,6 @@
     "test:watch": "jest --watch --passWithNoTests",
     "test:cov": "jest --coverage --passWithNoTests",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json",
     "test:unit": "jest --testMatch='**/*.spec.ts' --passWithNoTests",
     "test:integration": "jest --testMatch='test/integration/**/*.spec.ts' --passWithNoTests"
   },
@@ -82,10 +81,8 @@
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
     "@nestjs/event-emitter": "^3.0.1",
-    "@nestjs/platform-express": "^11.0.1",
     "@nestjs/schedule": "^6.0.1",
     "@types/cli-progress": "^3.11.6",
-    "@types/uuid": "^9.0.8",
     "chalk": "^5.6.2",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
@@ -100,12 +97,12 @@
     "mongodb": "^7.1.0",
     "mysql2": "^3.24.6",
     "nanoid": "^3.3.11",
-    "nodemailer": "^7.0.10",
+    "nodemailer": "^10.3.1",
     "ora": "^9.0.0",
     "pg": "^8.20.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "uuid": "^9.0.1"
+    "uuid": "^11.1.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -113,14 +110,11 @@
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.1",
-    "@types/express": "^5.0.0",
     "@types/inquirer": "^9.0.9",
     "@types/jest": "^30.0.0",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.7",
-    "@types/nodemailer": "^7.0.4",
     "@types/pg": "^8.18.0",
-    "@types/supertest": "^6.0.2",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-prettier": "^5.2.2",
@@ -129,7 +123,6 @@
     "prettier": "^3.4.2",
     "rimraf": "^6.1.0",
     "source-map-support": "^0.5.21",
-    "supertest": "^7.0.0",
     "ts-jest": "^29.2.5",
     "ts-loader": "^9.5.2",
     "ts-node": "^10.9.2",
