@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `lockDatabase(config).reset()` no longer drops platform schemas such as Supabase's `auth`, even when the connecting role is a member of their owner, and accepts a list of schemas to empty
 
 ### Fixed
+- Restoring a checkpoint on Supabase no longer reports "Permission denied" or removes `supabase_admin`'s default privileges on `public`: a restore now empties your schemas instead of dropping them, so each schema keeps its owner, grants, default privileges and extensions
 - Restoring a checkpoint on Supabase, or any database where another role owns a schema, no longer fails with `must be owner of schema auth`, and never removes or replaces `auth`, `storage`, `extensions` or other platform schemas, even when your database user is a member of the role that owns them
 - Checkpoints now hold only the schemas a restore may replace, plus the extensions installed in them, so a restore no longer reports failure after putting your data back
 - Restoring a checkpoint keeps table grants and default privileges, so roles such as Supabase's `anon` keep their access
