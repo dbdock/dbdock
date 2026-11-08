@@ -232,6 +232,58 @@ describePg(
       expect(await publicSchema()).toEqual(schemaBefore);
     });
 
+    // Postgres applies a role's default privileges to every object it creates,
+    // and a restore re-creates every object. A grant taken away before the
+    // checkpoint must stay taken away.
+    it('gives re-created objects the grants they had, not the default privileges', async () => {
+      await withClient(DB, OWNER, (client) =>
+        client.query(`
+        ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE ON SEQUENCES TO ${ANON};
+        ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO ${ANON};
+        CREATE SEQUENCE invoice_numbers;
+        CREATE FUNCTION order_count() RETURNS bigint LANGUAGE sql AS 'SELECT count(*) FROM orders';
+        REVOKE SELECT ON profiles FROM ${ANON};
+        REVOKE USAGE ON SEQUENCE invoice_numbers FROM ${ANON};
+        REVOKE EXECUTE ON FUNCTION order_count() FROM PUBLIC, ${ANON};`),
+      );
+      const access = () =>
+        withClient(DB, OWNER, async (client) => {
+          const { rows } = await client.query<
+            Record<string, boolean | string>
+          >(`
+          SELECT has_table_privilege('${ANON}', 'public.profiles', 'SELECT') AS profiles,
+                 has_table_privilege('${ANON}', 'public.orders', 'SELECT') AS orders,
+                 has_sequence_privilege('${ANON}', 'public.invoice_numbers', 'USAGE') AS sequence,
+                 has_function_privilege('${ANON}', 'public.order_count()', 'EXECUTE') AS function,
+                 (SELECT string_agg(d.defaclobjtype::text || ':' || d.defaclacl::text, ' ' ORDER BY d.defaclobjtype)
+                  FROM pg_default_acl d WHERE d.defaclrole = '${OWNER}'::regrole) AS defaults`);
+          return rows[0];
+        });
+      const before = await access();
+      expect(before).toMatchObject({
+        profiles: false,
+        orders: true,
+        sequence: false,
+        function: false,
+      });
+      // The role's own default privileges come back too.
+      expect(
+        String(before.defaults)
+          .split(' ')
+          .map((entry) => entry.split(':')[0])
+          .sort(),
+      ).toEqual(['S', 'f', 'r']);
+      const checkpointId = await checkpointAfterBadChange();
+
+      await restoreCheckpoint(checkpointId, {
+        config: config(),
+        cwd,
+        confirmLaterWrites: true,
+      });
+
+      expect(await access()).toEqual(before);
+    });
+
     it('never drops the platform schema, even when the role is a member of its owner', async () => {
       await admin.query(`GRANT ${AUTH_ADMIN} TO ${OWNER}`);
       const before = await appData();
