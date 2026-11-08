@@ -199,6 +199,25 @@ const SCHEMA_OBJECTS_SQL = `
           OR (e.deptype IN ('i', 'a')
               AND NOT (e.refclassid = d.classid AND e.refobjid = d.objid))))`;
 
+// The REVOKEs that clear this role's own default privileges in a schema.
+// Postgres applies them to every object the role creates there, and a restore
+// re-creates every object, so left in place they would add their grants on top
+// of the checkpoint's. The checkpoint holds the schema's default privileges and
+// puts them back after the objects, as pg_restore expects in an empty database.
+const OWN_DEFAULT_PRIVILEGES_SQL = `
+  SELECT format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA %I REVOKE ALL ON %s FROM %s',
+           current_user, n.nspname,
+           CASE d.defaclobjtype WHEN 'r' THEN 'TABLES' WHEN 'S' THEN 'SEQUENCES'
+                                WHEN 'f' THEN 'FUNCTIONS' ELSE 'TYPES' END,
+           CASE WHEN a.grantee = 0 THEN 'PUBLIC'
+                ELSE quote_ident(pg_get_userbyid(a.grantee)) END) AS statement
+  FROM pg_default_acl d
+  JOIN pg_namespace n ON n.oid = d.defaclnamespace
+  CROSS JOIN LATERAL (SELECT DISTINCT grantee FROM aclexplode(d.defaclacl)) a
+  WHERE d.defaclrole = (SELECT oid FROM pg_roles WHERE rolname = current_user)
+    AND n.nspname = $1
+    AND d.defaclobjtype IN ('r', 'S', 'f', 'T')`;
+
 // pg_identify_object's type name, the DROP keyword, and the order to drop in:
 // relations first so routines and types are no longer in use.
 const DROP_KEYWORDS: Record<string, [keyword: string, order: number]> = {
@@ -286,9 +305,11 @@ export function emptySchemaStatements(
 }
 
 // Empties the schemas a restore will refill, inside one transaction. The
-// schemas themselves stay: their owner, grants and default privileges belong
-// to whoever set them (on Supabase, partly to supabase_admin, which this role
-// cannot recreate), and installed extensions stay installed.
+// schemas themselves stay: their owner, grants and other roles' default
+// privileges belong to whoever set them (on Supabase, partly to
+// supabase_admin, which this role cannot recreate), and installed extensions
+// stay installed. This role's own default privileges there are cleared; the
+// checkpoint brings them back.
 export async function resetPostgres(
   client: Client,
   schemas?: string[],
@@ -314,6 +335,11 @@ export async function resetPostgres(
       );
       for (const statement of emptySchemaStatements(rows))
         await client.query(statement);
+      const defaults = await client.query<{ statement: string }>(
+        OWN_DEFAULT_PRIVILEGES_SQL,
+        [schema],
+      );
+      for (const { statement } of defaults.rows) await client.query(statement);
     }
     await client.query('COMMIT');
   } catch (err) {
