@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-09
+
 ### Added
 - `dbdock init` sets a project up once: it puts `dbdock run --` in front of the migration tool in your package.json scripts (Prisma, Drizzle, Knex, Sequelize, TypeORM, node-pg-migrate, MikroORM, db-migrate), keeps environment prefixes such as `dotenv -- ` in front, and creates `dbdock.config.ts`. After that, your own `npm run db:migrate` saves a checkpoint first. `--remove` takes DBDock back out of the scripts
 - `dbdock.config.ts` (also `.mts`, `.cts`, `.js`, `.mjs`, `.cjs`) with `defineConfig` from `dbdock/config`: the database, where checkpoints go (local disk, S3 or R2), the encryption key, and `enabled`. A misspelled option or an empty value fails with the file's name before anything changes
