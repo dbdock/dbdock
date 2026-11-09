@@ -3,14 +3,24 @@ import { config as loadEnv } from 'dotenv';
 import { configExists, loadConfig, type CLIConfig } from '@/cli/utils/config';
 import { getDbUrlFromEnv } from '@/config/env-url.helper';
 import { projectDir } from '@/cloud/constants';
+import { cliConfigFrom, loadConfigFile } from '@/changes/config-file';
 
-export function guardConfig(cwd: string, supplied?: CLIConfig): CLIConfig {
+// The settings a guarded change runs with: the ones passed in, else
+// dbdock.config.ts (or .js), else dbdock.config.json, else the environment.
+// .env is loaded first, so a config file can read it through process.env.
+export async function guardConfig(
+  cwd: string,
+  supplied?: CLIConfig,
+): Promise<CLIConfig> {
   if (!supplied) loadEnv({ path: join(cwd, '.env'), quiet: true });
-  if (!supplied && !getDbUrlFromEnv() && !configExists(cwd))
+  const file = supplied ? null : await loadConfigFile(cwd);
+  if (!supplied && !file && !getDbUrlFromEnv() && !configExists(cwd))
     throw new Error(
       'Set DATABASE_URL or DBDOCK_DB_URL locally before running a change.',
     );
-  const config: CLIConfig = structuredClone(supplied ?? loadConfig(cwd));
+  const config: CLIConfig = structuredClone(
+    supplied ?? (file ? cliConfigFrom(file, cwd) : loadConfig(cwd)),
+  );
   if (
     !['postgres', 'postgresql', 'mysql', 'mariadb'].includes(
       config.database.type,
@@ -40,6 +50,7 @@ export function guardConfig(cwd: string, supplied?: CLIConfig): CLIConfig {
     throw new Error('Set your bucket and storage credentials locally.');
   if (
     !supplied &&
+    !file &&
     !configExists(cwd) &&
     !process.env.STORAGE_LOCAL_PATH &&
     !process.env.DBDOCK_STORAGE_LOCAL_PATH &&
@@ -62,7 +73,7 @@ export function guardConfig(cwd: string, supplied?: CLIConfig): CLIConfig {
     !process.env.DBDOCK_CHECKPOINT_DIR
   )
     throw new Error(
-      'CI needs your S3/R2 bucket, or DBDOCK_CHECKPOINT_DIR on a persistent volume.',
+      'CI needs your S3/R2 bucket (checkpoints in dbdock.config.ts), or DBDOCK_CHECKPOINT_DIR on a persistent volume. To run without DBDock there: enabled: !process.env.CI',
     );
   const key =
     config.backup?.encryption?.key ?? process.env.DBDOCK_ENCRYPTION_SECRET;

@@ -77,6 +77,15 @@ export {
 } from './crypto/backup-format';
 
 export { runGuardedChange } from '@/changes/guard';
+export { guard } from '@/changes/guard-migrations';
+export type { GuardOptionsForCode } from '@/changes/guard-migrations';
+export { defineConfig } from '@/changes/define-config';
+export type {
+  DBDockConfig,
+  LocalCheckpoints,
+  S3Checkpoints,
+  R2Checkpoints,
+} from '@/changes/define-config';
 export { restoreCheckpoint } from '@/changes/restore';
 export { sqlSummary } from '@/changes/metadata';
 export { syncRecords } from '@/changes/records';

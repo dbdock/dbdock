@@ -15,7 +15,9 @@
     "dist/**/*.d.ts",
     "dist/**/*.js.map",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "config.js",
+    "config.d.ts"
   ],
   "keywords": [
     "postgresql",
@@ -93,6 +95,7 @@
     "dotenv": "^17.2.3",
     "inquirer": "^9.3.8",
     "ioredis": "^5.11.1",
+    "jiti": "^2.7.0",
     "js-yaml": "^4.1.1",
     "mongodb": "^7.1.0",
     "mysql2": "^3.24.6",

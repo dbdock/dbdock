@@ -7,6 +7,7 @@ import { changesCommand } from '@/cli/commands/changes';
 import { linkCommand } from '@/cli/commands/link';
 import { restoreCheckpointCommand } from '@/cli/commands/restore-checkpoint';
 import { initCommand } from './commands/init';
+import { projectInitCommand } from './commands/project-init';
 import { backupCommand } from './commands/backup';
 import { restoreCommand } from './commands/restore';
 import { testCommand } from './commands/test';
@@ -57,8 +58,15 @@ program
 
 program
   .command('init')
-  .description('Initialize DBDock configuration')
-  .action(initCommand);
+  .description(
+    "Run this project's migration scripts through DBDock and add dbdock.config.ts",
+  )
+  .option('-y, --yes', 'Make the changes without asking')
+  .option('--remove', 'Take DBDock back out of the package.json scripts')
+  .option('--backups', 'Set up scheduled backups instead (the earlier init)')
+  .action((options: { yes?: boolean; remove?: boolean; backups?: boolean }) =>
+    options.backups ? initCommand() : projectInitCommand(options),
+  );
 
 program
   .command('migrate-config')

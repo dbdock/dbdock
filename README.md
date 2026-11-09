@@ -16,16 +16,17 @@ DBDock shows what changed in your database, who changed it, and lets you put it 
 
 ---
 
-Run changes through the guard so a complete checkpoint is saved before they start:
+Set it up once in your project, then run your migrations the way you already do:
 
 ```bash
 npm install --save-dev dbdock
-npx dbdock login
-npx dbdock link
-npx dbdock run
+npx dbdock init        # runs your migration scripts through DBDock and adds dbdock.config.ts
+npm run db:migrate     # your own script: a checkpoint is saved first, then the migration runs
 ```
 
-`dbdock run` with no command runs `prisma migrate deploy` or `drizzle-kit migrate` when the project uses Prisma or Drizzle. For anything else, pass the command: `npx dbdock run -- <your migration command>`.
+`init` finds the package.json scripts that run Prisma, Drizzle, Knex, Sequelize, TypeORM, node-pg-migrate, MikroORM or db-migrate, and puts `dbdock run --` in front of the tool. See [Project setup](#project-setup). To see changes on the dashboard, also run `npx dbdock login` and `npx dbdock link`.
+
+You can also run DBDock directly. `npx dbdock run` with no command runs `prisma migrate deploy` or `drizzle-kit migrate` when the project uses Prisma or Drizzle. For anything else, pass the command: `npx dbdock run -- <your migration command>`.
 
 Set `DATABASE_URL` or `DBDOCK_DB_URL` in the local environment or private `.env` file. The guard supports PostgreSQL, MySQL and MariaDB and refuses the change if its checkpoint or initial local record cannot be saved. Use `dbdock run --sql migration.sql` for SQL files.
 
@@ -47,6 +48,7 @@ Only changes through the guard are recorded. A command must use the same target 
 ## Table of contents
 
 - [Install](#install)
+- [Project setup](#project-setup)
 - [Features](#features)
 - [Existing backup tools](#existing-backup-tools)
 - [Commands](#commands)
@@ -103,6 +105,60 @@ export DBDOCK_PG_BIN_DIR=/usr/lib/postgresql/18/bin
 ```
 </details>
 
+## Project setup
+
+`npx dbdock init` shows what it will change and asks first (add `--yes` in scripts):
+
+```diff
+- "db:migrate": "prisma migrate deploy"
++ "db:migrate": "dbdock run -- prisma migrate deploy"
+- "build": "prisma generate && prisma migrate deploy && next build"
++ "build": "prisma generate && dbdock run -- prisma migrate deploy && next build"
+```
+
+Only `dbdock run -- ` is inserted. Environment prefixes stay in front, so DBDock sees the same environment as the tool: `dotenv -e .env.production -- dbdock run -- prisma migrate deploy`. Commands that only read, such as `prisma migrate status`, are left alone. If no script runs a migration but the project uses Prisma or Drizzle, `init` adds a `db:migrate` script. `npx dbdock init --remove` takes DBDock back out of the scripts.
+
+Running the tool directly, as in `npx prisma migrate deploy`, skips DBDock: only the scripts are wrapped.
+
+`init` also creates `dbdock.config.ts` (or `dbdock.config.mjs` without TypeScript):
+
+```typescript
+import { defineConfig } from 'dbdock/config';
+
+export default defineConfig({
+  // The database your migrations change. Default: DATABASE_URL or DBDOCK_DB_URL.
+  database: process.env.DATABASE_URL,
+  // Default: local disk, in .dbdock/checkpoints. In CI, use your own bucket:
+  checkpoints: {
+    storage: 's3', // or 'r2', or 'local'
+    bucket: 'my-checkpoints',
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? '',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? '',
+  },
+  // 64 hex characters. Default: DBDOCK_ENCRYPTION_SECRET.
+  encryptionKey: process.env.DBDOCK_ENCRYPTION_SECRET,
+  // false runs the wrapped scripts without DBDock, e.g. !process.env.CI
+  enabled: true,
+});
+```
+
+`.env` is loaded before the file runs. A misspelled option, or an option whose environment variable is not set where the script runs, stops the script with the file's name before anything changes. Projects without a config file keep working from `dbdock.config.json` or environment variables.
+
+Scripts that run in CI or on a host (`build`, `vercel-build`, `deploy`, ...) need a bucket there, or `enabled: false` there. Otherwise DBDock refuses to save a local checkpoint in CI and stops the script before the migration.
+
+To run migrations from code, such as a migration script run once per deploy, wrap the call:
+
+```typescript
+import { guard } from 'dbdock';
+
+await guard(() => migrate(db, { migrationsFolder: './drizzle' }), {
+  // Optional: skip the checkpoint when nothing is pending.
+  when: async () => (await pendingMigrations()).length > 0,
+});
+```
+
+Run it from one place. Two guarded changes at once collide on DBDock's database lock, and the second throws.
+
 ## Features
 
 - **Backups & restores**. PostgreSQL, MySQL/MariaDB, SQL Server, and Redis, with encryption and compression
@@ -119,7 +175,7 @@ export DBDOCK_PG_BIN_DIR=/usr/lib/postgresql/18/bin
 ## Existing backup tools
 
 ```bash
-npx dbdock init      # Interactive setup (30 seconds)
+npx dbdock init --backups   # Interactive setup (30 seconds)
 npx dbdock test      # Validate connections
 npx dbdock backup    # Create your first backup
 npx dbdock restore   # Interactive restore
@@ -135,7 +191,7 @@ See the [Quickstart guide](https://docs.dbdock.xyz/get-started/quickstart) for a
 | `undo` | Put the database back to the checkpoint before the last change |
 | `changes` | List recent changes, who made them and their checkpoints |
 | `link` | Link this directory without a database URL |
-| [`init`](https://docs.dbdock.xyz/cli/init) | Interactive setup wizard (optionally links to the cloud) |
+| `init` | Run this project's migration scripts through DBDock and add `dbdock.config.ts`. `--remove` undoes it; `--backups` opens the backup setup wizard |
 | [`backup`](https://docs.dbdock.xyz/cli/backup) | Create a backup |
 | [`restore`](https://docs.dbdock.xyz/cli/restore) | Restore a backup (with filtering), or a checkpoint by ID |
 | [`copydb`](https://docs.dbdock.xyz/cli/copydb) | Copy a database between two URLs |

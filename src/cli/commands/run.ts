@@ -1,5 +1,7 @@
 import { spawn } from 'child_process';
 import { readFile } from 'fs/promises';
+import { basename } from 'path';
+import { loadConfigFile } from '@/changes/config-file';
 import { GuardedChangeError, runGuardedChange } from '@/changes/guard';
 import { sqlSummary } from '@/changes/metadata';
 import { detectMigration } from '@/changes/detect';
@@ -66,6 +68,23 @@ export async function runCommand(
       detectedFrom = detected.source;
     }
     const sql = options.sql ? await readFile(options.sql, 'utf8') : undefined;
+    const file = await loadConfigFile(process.cwd());
+    if (file?.config.enabled === false) {
+      const name = basename(file.path);
+      if (sql !== undefined)
+        throw new Error(
+          `DBDock is off in ${name} (enabled: false), so it does not run SQL files. Turn it on, or run the file with your own tool.`,
+        );
+      console.log(
+        line(
+          ' ',
+          'DBDock is off',
+          `enabled is false in ${name}; no checkpoint`,
+        ),
+      );
+      await runChild(toRun);
+      return;
+    }
     const metadata: GuardOptions = {
       actor: options.actor,
       actorKind: options.agent ? 'agent' : 'person',

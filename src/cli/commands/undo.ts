@@ -17,7 +17,7 @@ export async function undoCommand(
   if (id) return restoreCheckpointCommand(id, options);
   const cwd = process.cwd();
   try {
-    const config = guardConfig(cwd);
+    const config = await guardConfig(cwd);
     const history = await readHistory(cwd);
     const { target, skipped } = await findUndoTarget(config, history.entries);
     if (!target) {
