@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - `dbdock init` no longer opens the backup setup wizard; that is now `dbdock init --backups`
 
+### Fixed
+- On Windows, `dbdock run -- <command>` starts the command with cross-spawn, which runs tools installed as `.cmd` files (npx, prisma and the rest of `node_modules/.bin`) through cmd.exe. Node cannot start `.cmd` files without a shell, so these commands could not start before
+- A command that is not installed now says so (`prisma was not found. Is it installed in this project?`) instead of `spawn prisma ENOENT`
+
 ## [1.3.3] - 2026-11-08
 
 ### Security

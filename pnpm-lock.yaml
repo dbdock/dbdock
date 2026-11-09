@@ -59,6 +59,9 @@ importers:
       cron:
         specifier: 4.3.3
         version: 4.3.3
+      cross-spawn:
+        specifier: ^7.0.6
+        version: 7.0.6
       dotenv:
         specifier: ^17.2.3
         version: 17.2.3
@@ -117,6 +120,9 @@ importers:
       '@nestjs/testing':
         specifier: ^11.0.1
         version: 11.1.8(@nestjs/common@11.1.8(class-transformer@0.5.1)(class-validator@0.14.2)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.8)(@nestjs/platform-express@11.1.8)
+      '@types/cross-spawn':
+        specifier: ^6.0.6
+        version: 6.0.6
       '@types/inquirer':
         specifier: ^9.0.9
         version: 9.0.9
@@ -1275,6 +1281,9 @@ packages:
 
   '@types/cli-progress@3.11.6':
     resolution: {integrity: sha512-cE3+jb9WRlu+uOSAugewNpITJDt1VF8dHOopPO4IABFc3SXYL5WE/+PTz/FCdZRRfIujiWW3n3aMbv1eIGVRWA==}
+
+  '@types/cross-spawn@6.0.6':
+    resolution: {integrity: sha512-fXRhhUkG4H3TQk5dBhQ7m/JDdSNHKwR2BBia62lhwEIq9xGiQKLxd6LymNhn47SjXhsUEPmxi+PKw2OkW4LLjA==}
 
   '@types/eslint-scope@3.7.7':
     resolution: {integrity: sha512-MzMFlSLBqNF2gcHWO0G1vP/YQyfvrxZ0bF+u7mzUdZ1/xK4A4sru+nraZz5i3iEIk1l1uyicaDVTB4QbbEkAYg==}
@@ -5648,6 +5657,10 @@ snapshots:
       '@babel/types': 7.28.5
 
   '@types/cli-progress@3.11.6':
+    dependencies:
+      '@types/node': 22.19.0
+
+  '@types/cross-spawn@6.0.6':
     dependencies:
       '@types/node': 22.19.0
 

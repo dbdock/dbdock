@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import spawn from 'cross-spawn';
 import { readFile } from 'fs/promises';
 import { basename } from 'path';
 import { loadConfigFile } from '@/changes/config-file';
@@ -20,12 +20,12 @@ interface RunOptions {
   agent?: string;
 }
 
+// cross-spawn, because on Windows npx, prisma and other tools installed in
+// node_modules/.bin are .cmd files, which child_process.spawn cannot start
+// without a shell. Elsewhere it is child_process.spawn unchanged.
 function runChild(command: string[]): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    const child = spawn(command[0], command.slice(1), {
-      stdio: 'inherit',
-      shell: false,
-    });
+    const child = spawn(command[0], command.slice(1), { stdio: 'inherit' });
     let interrupted = false;
     const stop = () => {
       interrupted = true;
@@ -37,9 +37,15 @@ function runChild(command: string[]): Promise<void> {
       process.removeListener('SIGINT', stop);
       process.removeListener('SIGTERM', stop);
     };
-    child.once('error', (error) => {
+    child.once('error', (error: NodeJS.ErrnoException) => {
       cleanup();
-      reject(error);
+      reject(
+        error.code === 'ENOENT'
+          ? new Error(
+              `${command[0]} was not found. Is it installed in this project?`,
+            )
+          : error,
+      );
     });
     child.once('close', (code, signal) => {
       cleanup();
