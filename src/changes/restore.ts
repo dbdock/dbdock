@@ -29,7 +29,7 @@ export async function restoreCheckpoint(
       `${RESTORE_WARNING} Pass confirmLaterWrites: true or a confirm callback.`,
     );
   const cwd = options.cwd ?? process.cwd();
-  const config = guardConfig(cwd, options.config);
+  const config = await guardConfig(cwd, options.config);
   const checkpoint = await readCheckpoint(config, id);
   const postgres = POSTGRES_TYPES.includes(config.database.type);
   // A 1.3.0 checkpoint is a dump of every schema the role could read, so

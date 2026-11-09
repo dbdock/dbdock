@@ -1,5 +1,7 @@
-import { spawn } from 'child_process';
+import spawn from 'cross-spawn';
 import { readFile } from 'fs/promises';
+import { basename } from 'path';
+import { loadConfigFile } from '@/changes/config-file';
 import { GuardedChangeError, runGuardedChange } from '@/changes/guard';
 import { sqlSummary } from '@/changes/metadata';
 import { detectMigration } from '@/changes/detect';
@@ -18,12 +20,12 @@ interface RunOptions {
   agent?: string;
 }
 
+// cross-spawn, because on Windows npx, prisma and other tools installed in
+// node_modules/.bin are .cmd files, which child_process.spawn cannot start
+// without a shell. Elsewhere it is child_process.spawn unchanged.
 function runChild(command: string[]): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    const child = spawn(command[0], command.slice(1), {
-      stdio: 'inherit',
-      shell: false,
-    });
+    const child = spawn(command[0], command.slice(1), { stdio: 'inherit' });
     let interrupted = false;
     const stop = () => {
       interrupted = true;
@@ -35,9 +37,15 @@ function runChild(command: string[]): Promise<void> {
       process.removeListener('SIGINT', stop);
       process.removeListener('SIGTERM', stop);
     };
-    child.once('error', (error) => {
+    child.once('error', (error: NodeJS.ErrnoException) => {
       cleanup();
-      reject(error);
+      reject(
+        error.code === 'ENOENT'
+          ? new Error(
+              `${command[0]} was not found. Is it installed in this project?`,
+            )
+          : error,
+      );
     });
     child.once('close', (code, signal) => {
       cleanup();
@@ -66,6 +74,23 @@ export async function runCommand(
       detectedFrom = detected.source;
     }
     const sql = options.sql ? await readFile(options.sql, 'utf8') : undefined;
+    const file = await loadConfigFile(process.cwd());
+    if (file?.config.enabled === false) {
+      const name = basename(file.path);
+      if (sql !== undefined)
+        throw new Error(
+          `DBDock is off in ${name} (enabled: false), so it does not run SQL files. Turn it on, or run the file with your own tool.`,
+        );
+      console.log(
+        line(
+          ' ',
+          'DBDock is off',
+          `enabled is false in ${name}; no checkpoint`,
+        ),
+      );
+      await runChild(toRun);
+      return;
+    }
     const metadata: GuardOptions = {
       actor: options.actor,
       actorKind: options.agent ? 'agent' : 'person',

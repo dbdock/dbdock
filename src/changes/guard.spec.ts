@@ -78,7 +78,7 @@ describe('Guarded changes', () => {
     process.env.CI = 'true';
     const change = jest.fn();
     await expect(runGuardedChange(change, { config, cwd })).rejects.toThrow(
-      'CI needs your S3/R2 bucket, or DBDOCK_CHECKPOINT_DIR on a persistent volume.',
+      'CI needs your S3/R2 bucket (checkpoints in dbdock.config.ts), or DBDOCK_CHECKPOINT_DIR on a persistent volume. To run without DBDock there: enabled: !process.env.CI',
     );
     expect(lockDatabase).not.toHaveBeenCalled();
     expect(change).not.toHaveBeenCalled();

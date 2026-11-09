@@ -30,7 +30,7 @@ export async function runGuardedChange<T>(
   prepare?: (database: LocalDatabase) => Promise<void>,
 ): Promise<GuardResult<T>> {
   const cwd = options.cwd ?? process.cwd();
-  const config = guardConfig(cwd, options.config);
+  const config = await guardConfig(cwd, options.config);
   const database = await lockDatabase(config);
   try {
     await prepare?.(database);

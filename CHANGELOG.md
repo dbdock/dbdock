@@ -6,6 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-09
+
+### Added
+- `dbdock init` sets a project up once: it puts `dbdock run --` in front of the migration tool in your package.json scripts (Prisma, Drizzle, Knex, Sequelize, TypeORM, node-pg-migrate, MikroORM, db-migrate), keeps environment prefixes such as `dotenv -- ` in front, and creates `dbdock.config.ts`. After that, your own `npm run db:migrate` saves a checkpoint first. `--remove` takes DBDock back out of the scripts
+- `dbdock.config.ts` (also `.mts`, `.cts`, `.js`, `.mjs`, `.cjs`) with `defineConfig` from `dbdock/config`: the database, where checkpoints go (local disk, S3 or R2), the encryption key, and `enabled`. A misspelled option or an empty value fails with the file's name before anything changes
+- `guard()` runs migrations from code with a checkpoint first and a record after, with `when` to skip the checkpoint when nothing is pending
+
+### Changed
+- `dbdock init` no longer opens the backup setup wizard; that is now `dbdock init --backups`
+
+### Fixed
+- On Windows, `dbdock run -- <command>` starts the command with cross-spawn, which runs tools installed as `.cmd` files (npx, prisma and the rest of `node_modules/.bin`) through cmd.exe. Node cannot start `.cmd` files without a shell, so these commands could not start before
+- A command that is not installed now says so (`prisma was not found. Is it installed in this project?`) instead of `spawn prisma ENOENT`
+
 ## [1.3.3] - 2026-11-08
 
 ### Security
