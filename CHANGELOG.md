@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.3.3] - 2026-11-08
 
+Not published to npm. This fix first shipped in 1.4.0.
+
 ### Security
 - `dbdock undo` no longer hands back access you had taken away. When your role has default privileges in a schema (`ALTER DEFAULT PRIVILEGES … GRANT …`, for example on Supabase projects that grant new tables to the API roles), Postgres applied them to every table, sequence and function the restore re-created, on top of the checkpoint's own grants. The restore now clears your role's default privileges in the replaced schemas first, and the checkpoint puts them back after the objects
 
