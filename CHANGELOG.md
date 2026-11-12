@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `restoreBackupInPlace()` restores a whole-database backup onto the database it was taken from the way a checkpoint restore does. On Postgres it replaces only the app's schemas: the ones the connecting role may replace, plus schemas in the backup that were dropped since, which it creates again with their grants. It empties them, then restores them with their grants and default privileges. Schemas owned by the platform or another role (such as Supabase `auth`) keep everything written after the backup, and so do objects outside any schema, such as extensions and event triggers. It returns which schemas it replaced and which it kept. MySQL and MariaDB are emptied and restored whole, as before
+- `restoreBackupStandalone()` takes `selectSchemas`, which sees the schemas a Postgres backup holds and picks which to restore and which to create; `beforeRestore` then receives the chosen schemas. `DatabaseLock.schemaLists()` reports the schemas that exist and the ones the role may replace
+
+### Fixed
+- Restoring a whole-database Postgres backup over its own database with `lockDatabase().reset()` and `restoreBackupStandalone()` re-created every schema in the dump with `pg_restore --clean`. With a platform schema such as Supabase `auth`, that either failed with "Permission denied" (when a platform role owns the schema) or, when the connecting role owns it, replaced it with the backup's copy and lost sign-ups made after the backup. Table grants and the role's own default privileges did not come back either. Use `restoreBackupInPlace()` for this
+
 ## [1.4.0] - 2026-11-09
 
 ### Added

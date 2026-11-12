@@ -11,6 +11,7 @@ import {
   readSync,
   rmdirSync,
   unlinkSync,
+  writeFileSync,
 } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join, resolve, sep } from 'path';
@@ -36,7 +37,10 @@ import { ManagedStorageAdapter } from '../storage/adapters/managed.adapter';
 import { IStorageAdapter } from '../storage/storage.interface';
 import { ManagedBroker } from '../cloud/types';
 import { getEngine } from '../engines';
-import type { RestoreSpawnOptions } from '../engines/engine.types';
+import type {
+  DatabaseEngine,
+  RestoreSpawnOptions,
+} from '../engines/engine.types';
 import {
   isHarmlessPgRestoreWarning,
   summarizePgRestoreOutput,
@@ -59,11 +63,59 @@ export interface RestoreStandaloneOptions {
   strict?: boolean;
   // Runs once the backup is downloaded and proven to decode, just before the
   // restore starts. Use it to clear the target, e.g. DatabaseLock.reset().
-  beforeRestore?: () => Promise<void>;
+  // With selectSchemas it gets the schemas the restore will replace.
+  beforeRestore?: (schemas?: string[]) => Promise<void>;
+  // Postgres only. Called with the schemas the backup holds once it is proven
+  // to decode. The restore then touches only the schemas in `restore`, and
+  // creates the ones in `create` (in the backup but gone from the database)
+  // together with their grants. Everything outside them, including objects
+  // that belong to no schema such as extensions and event triggers, is left
+  // as it is.
+  selectSchemas?: (inBackup: string[]) => Promise<SchemaSelection>;
   checksum?: string;
   // How the engine's restore tool runs, e.g. without --clean after
   // beforeRestore has already emptied the target schemas.
   restoreFlags?: RestoreSpawnOptions;
+}
+
+export interface SchemaSelection {
+  restore: string[];
+  create: string[];
+}
+
+const TOC_ENTRY = /^(\d+); \d+ \d+ /;
+const SCHEMA_ENTRY = /^\d+; \d+ \d+ SCHEMA - (\S+)/;
+const SCHEMA_DETAIL =
+  /^\d+; \d+ \d+ (?:ACL|COMMENT|SECURITY LABEL) - SCHEMA (\S+)/;
+
+// The schemas a pg_restore -l listing holds. public has no SCHEMA entry since
+// PostgreSQL 15, so it is always included.
+export function archiveSchemas(contents: string[]): string[] {
+  const names = new Set(['public']);
+  for (const line of contents) {
+    const match = SCHEMA_ENTRY.exec(line);
+    if (match) names.add(match[1]);
+  }
+  return [...names];
+}
+
+// The lines of a full listing to restore, in archive order: the entries
+// pg_restore itself picked for the chosen schemas (`chosen` holds their ids),
+// plus the CREATE SCHEMA and the schema's grants for schemas to create, which
+// pg_restore -n leaves out.
+export function restoreListFor(
+  contents: string[],
+  chosen: Set<string>,
+  create: string[],
+): string[] {
+  return contents.filter((line) => {
+    const id = TOC_ENTRY.exec(line)?.[1];
+    if (!id) return false;
+    if (chosen.has(id)) return true;
+    const schema =
+      SCHEMA_ENTRY.exec(line)?.[1] ?? SCHEMA_DETAIL.exec(line)?.[1];
+    return schema !== undefined && create.includes(schema);
+  });
 }
 
 function buildRemoteAdapter(
@@ -242,11 +294,32 @@ export async function restoreBackupStandalone(
         );
     }
 
-    if (options.beforeRestore) {
+    let restoreFlags = options.restoreFlags;
+    let selection: SchemaSelection | undefined;
+    if (options.beforeRestore || options.selectSchemas) {
       callbacks?.onStage?.('Verifying backup');
       await verifyBackupDecodes(config, source.path);
+    }
+    if (options.selectSchemas) {
+      const contents = await listArchive(engine, config, source.path);
+      selection = await options.selectSchemas(archiveSchemas(contents));
+      const chosen = selection.restore.length
+        ? await listArchive(engine, config, source.path, selection.restore)
+        : [];
+      const ids = new Set(
+        chosen.flatMap((line) => TOC_ENTRY.exec(line)?.[1] ?? []),
+      );
+      restoreFlags = {
+        ...restoreFlags,
+        listFile: writeRestoreList(
+          restoreListFor(contents, ids, selection.create),
+          tempFiles,
+        ),
+      };
+    }
+    if (options.beforeRestore) {
       callbacks?.onStage?.('Preparing target database');
-      await options.beforeRestore();
+      await options.beforeRestore(selection?.restore);
     }
 
     const stream = chainStages(
@@ -257,7 +330,7 @@ export async function restoreBackupStandalone(
       callbacks.onStage('Restoring to database');
     }
 
-    const restoreProcess = engine.spawnRestore(target, options.restoreFlags);
+    const restoreProcess = engine.spawnRestore(target, restoreFlags);
     stream.pipe(restoreProcess.stdin);
 
     await new Promise<void>((resolve, reject) => {
@@ -367,6 +440,57 @@ function decodeStages(
   }
 
   return stages;
+}
+
+function writeRestoreList(lines: string[], tempFiles: string[]): string {
+  const dir = mkdtempSync(join(tmpdir(), 'dbdock-'));
+  const file = join(dir, 'restore.list');
+  writeFileSync(file, lines.join('\n') + '\n', { mode: 0o600 });
+  tempFiles.push(file);
+  return file;
+}
+
+// Reads the archive's table of contents through pg_restore -l, limited to
+// `schemas` when given. pg_restore stops reading once it has the contents, so
+// the rest of the stream is dropped.
+async function listArchive(
+  engine: DatabaseEngine,
+  config: CLIConfig,
+  sourcePath: string,
+  schemas?: string[],
+): Promise<string[]> {
+  if (!engine.spawnList)
+    throw new Error(`${engine.label} backups cannot be restored by schema.`);
+  const list = engine.spawnList(schemas);
+  const stages = decodeStages(config, sourcePath);
+  return new Promise<string[]>((resolve, reject) => {
+    let output = '';
+    let errors = '';
+    list.stdout.on('data', (chunk: Buffer) => (output += chunk.toString()));
+    list.stderr.on('data', (chunk: Buffer) => (errors += chunk.toString()));
+    list.stdin.on('error', () => undefined);
+    list.on('error', (err) =>
+      reject(
+        new Error(
+          `Failed to read the backup contents: ${err.message}\n\n${engine.clientToolHint}`,
+        ),
+      ),
+    );
+    list.on('close', (code) => {
+      for (const stage of stages) stage.destroy();
+      if (code === 0)
+        resolve(output.split('\n').filter((line) => TOC_ENTRY.test(line)));
+      else
+        reject(
+          new Error(
+            `Could not read the backup contents: ${errors.trim() || `pg_restore exited with code ${code}`}`,
+          ),
+        );
+    });
+    const stream = chainStages(stages);
+    stream.on('error', () => undefined);
+    stream.pipe(list.stdin);
+  });
 }
 
 function chainStages([source, ...transforms]: [Readable, ...Transform[]]):
