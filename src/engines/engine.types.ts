@@ -35,6 +35,9 @@ export interface RestoreSpawnOptions {
   // Restore grants and default privileges from the archive. Safe only when
   // restoring onto the server the archive came from, where the roles exist.
   acl?: boolean;
+  // Restore only the archive entries in this list file (pg_restore -L), in
+  // its order.
+  listFile?: string;
 }
 
 export interface DatabaseEngine {
@@ -59,4 +62,7 @@ export interface DatabaseEngine {
   ): string;
   formatRestoreError(errorOutput: string): string;
   shouldIgnoreRestoreMessage(message: string): boolean;
+  // Prints the archive's table of contents from stdin (pg_restore -l),
+  // limited to these schemas when given. Postgres only.
+  spawnList?(schemas?: string[]): ChildProcessWithoutNullStreams;
 }

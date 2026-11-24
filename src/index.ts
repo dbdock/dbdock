@@ -60,8 +60,14 @@ export type {
   RestoreProgressCallback,
   RestoreStandaloneOptions,
   RestoreStandaloneDeps,
+  SchemaSelection,
 } from './standalone/restore-standalone';
 export { lockDatabase, DatabaseBusyError } from './standalone/database-lock';
+export { restoreBackupInPlace } from './standalone/restore-in-place';
+export type {
+  RestoreInPlaceOptions,
+  RestoreInPlaceResult,
+} from './standalone/restore-in-place';
 export type { DatabaseLock } from './standalone/database-lock';
 export { getEngine, SUPPORTED_ENGINE_TYPES } from './engines';
 export type { DatabaseEngine } from './engines';

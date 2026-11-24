@@ -292,6 +292,20 @@ const result = await backups.createBackup({
 console.log(`Backup ${result.metadata.id}. ${result.metadata.formattedSize}`);
 ```
 
+To put a whole-database backup back onto the database it came from, use `restoreBackupInPlace`. `config` is the same database, storage and backup settings the backup was made with:
+
+```typescript
+import { createBackupStandalone, restoreBackupInPlace } from 'dbdock';
+
+const backup = await createBackupStandalone(config);
+// later
+const { replaced, kept } = await restoreBackupInPlace(config, {
+  storageKey: backup.storageKey,
+});
+```
+
+On Postgres it replaces only the schemas your role may replace, and brings back schemas dropped since the backup. Schemas owned by the platform or another role, such as Supabase `auth`, keep everything written after the backup. Writes made after the backup in the replaced schemas are lost, so confirm with the operator first.
+
 Full SDK reference at [docs.dbdock.xyz/sdk](https://docs.dbdock.xyz/sdk/overview).
 
 ## Security

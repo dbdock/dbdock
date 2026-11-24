@@ -12,6 +12,9 @@ export interface DatabaseLock {
   // schemas are emptied, not dropped. With `schemas`, empties only those; a
   // schema the role may not replace makes it throw before anything changes.
   reset(schemas?: string[]): Promise<void>;
+  // Postgres: every schema outside Postgres itself, and the ones this role may
+  // replace. MySQL: the database itself in both.
+  schemaLists(): Promise<{ existing: string[]; restorable: string[] }>;
   close(): Promise<void>;
 }
 
@@ -110,6 +113,12 @@ async function lockPostgres(conn: DbConnection): Promise<DatabaseLock> {
         );
       }
       await resetPostgres(client, schemas);
+    },
+    async schemaLists() {
+      return {
+        existing: await listSchemas(client),
+        restorable: await restorableSchemas(client),
+      };
     },
     async close() {
       if (closed) return;
@@ -473,6 +482,9 @@ async function lockMysql(conn: DbConnection): Promise<DatabaseLock> {
           .query('SET FOREIGN_KEY_CHECKS = 1')
           .catch(() => undefined);
       }
+    },
+    schemaLists() {
+      return Promise.resolve({ existing: [database], restorable: [database] });
     },
     async close() {
       if (closed) return;

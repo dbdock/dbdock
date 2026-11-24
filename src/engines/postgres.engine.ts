@@ -198,9 +198,15 @@ export const postgresEngine: DatabaseEngine = {
       ...(clean ? ['--clean', '--if-exists'] : []),
       '--no-owner',
       ...(acl ? [] : ['--no-acl']),
+      ...(options.listFile ? ['-L', options.listFile] : []),
       '--no-password',
     ];
     return spawn(resolvePgBin('pg_restore'), args, { env: buildEnv(conn) });
+  },
+
+  spawnList(schemas?: string[]): ChildProcessWithoutNullStreams {
+    const filters = (schemas ?? []).flatMap((schema) => ['-n', schema]);
+    return spawn(resolvePgBin('pg_restore'), ['-l', '-F', 'c', ...filters]);
   },
 
   testConnection(conn): Promise<void> {

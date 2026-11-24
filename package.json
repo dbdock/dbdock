@@ -1,6 +1,6 @@
 {
   "name": "dbdock",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Checkpoint database changes locally, keep a change record and restore checkpoints. CLI and SDK for PostgreSQL and MySQL.",
   "author": "Naheem Olaide <naheemolaide@gmail.com>",
   "private": false,
