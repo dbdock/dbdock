@@ -2,7 +2,7 @@
 
 # DBDock
 
-DBDock shows what changed in your database, who changed it, and lets you put it back. Your database URL stays on your machine or CI.
+A way back for your Postgres migrations and agent SQL. DBDock saves a checkpoint before each change, records who or what ran it, and puts your database back with one command. Your database URL stays on your machine or CI.
 
 [![npm version](https://img.shields.io/npm/v/dbdock.svg)](https://www.npmjs.com/package/dbdock)
 [![npm downloads](https://img.shields.io/npm/dm/dbdock.svg)](https://www.npmjs.com/package/dbdock)
@@ -15,6 +15,8 @@ DBDock shows what changed in your database, who changed it, and lets you put it 
 </div>
 
 ---
+
+Most teams change production Postgres with commands they can't take back: the ORM migration in a deploy, a one-off script, SQL a coding agent wrote. Prisma and Drizzle only go forward, so when a change drops a column or empties the wrong table, the way back is your provider's restore. Depending on your plan it may not exist, may be a day old or may cost extra, and it rewinds the whole database to a time you have to pick. DBDock saves a checkpoint of your app's schemas to storage you control right before each change, refuses to run the change if that save fails, records who or what ran it, and puts your schemas back to that checkpoint with one command.
 
 Set it up once in your project, then run your migrations the way you already do:
 
@@ -161,16 +163,16 @@ Run it from one place. Two guarded changes at once collide on DBDock's database 
 
 ## Features
 
-- **Backups & restores**. PostgreSQL, MySQL/MariaDB, SQL Server, and Redis, with encryption and compression
-- **Database copies**. clone prod → staging → local with a single command
-- **Cross-database migration**. MongoDB ↔ PostgreSQL with schema mapping, dry runs, and incremental sync
-- **Multi-cloud storage**. local disk, AWS S3, Cloudflare R2, Cloudinary. swap with one line
-- **Cloud Sync**. link a project to [DBDock Cloud](https://dbdock.xyz) and monitor from the dashboard
-- **Security-first**. AES-256-GCM encryption, env-var secrets, credential masking, `.pgpass` support
-- **Retention policies**. auto-cleanup by count or age, with a safety net
-- **Alerts & schedules**. email and Slack notifications, cron-based automation
-- **TypeScript SDK**. use DBDock programmatically in any Node.js app
-- **MIT licensed**. free forever, self-hosted, no vendor lock-in
+- **A checkpoint before every change.** `dbdock init` puts DBDock in front of your Prisma, Drizzle, Knex, Sequelize, TypeORM, node-pg-migrate, MikroORM or db-migrate script. The change does not run unless its checkpoint is saved.
+- **Checkpoints outside the database.** Local disk, or your own S3 or R2 bucket, optionally encrypted with your own key.
+- **A record of each change.** Time, person or agent, deploy or session, what kind of change it was, and the checkpoint saved before it (`npx dbdock changes`).
+- **Undo to before a change.** `npx dbdock undo` puts your app's schemas back to the checkpoint. Platform schemas such as Supabase's `auth` and `storage` are left alone. Writes made after the checkpoint are removed, and DBDock saves another checkpoint first, so running `undo` again puts them back.
+- **For agents as well as people.** Have your coding agent run SQL with `npx dbdock run --sql change.sql --actor "Claude Code"`, so it gets the same checkpoint and is named in the record.
+- **Optional dashboard.** `npx dbdock link` shows the record on [dbdock.xyz](https://dbdock.xyz). Your URL, credentials, SQL and data stay with you.
+- **PostgreSQL first.** MySQL and MariaDB are also supported.
+- **MIT licensed.** Free, self-hosted, no vendor lock-in.
+
+Also in DBDock: scheduled backups and restores (PostgreSQL, MySQL/MariaDB, SQL Server and Redis) to local disk, S3, R2 or Cloudinary, database copies, and MongoDB ↔ PostgreSQL migration. See [Existing backup tools](#existing-backup-tools).
 
 ## Existing backup tools
 
